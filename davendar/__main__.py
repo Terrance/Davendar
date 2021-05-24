@@ -16,7 +16,6 @@ async def _init_collection(app: web.Application):
     LOG.debug("Creating collection (root: %s)", root)
     coll = Collection(root)
     app["collection"] = coll
-    app["collection:scan"] = get_event_loop().run_in_executor(None, coll.add_all)
     app["collection:watch"] = create_task(coll.watch())
 
 

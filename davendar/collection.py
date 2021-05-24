@@ -1,10 +1,11 @@
-from collections import defaultdict
+from asyncio.events import get_event_loop
 import logging
 from pathlib import Path
-from typing import Dict, Set
+from typing import Dict, Optional
+from uuid import uuid4
 
 from asyncinotify import Inotify, Mask, Watch
-from icalendar import Calendar, Event
+from icalendar.cal import Component, Calendar as vCalendar, Event as vEvent
 
 
 LOG = logging.getLogger(__name__)
@@ -13,90 +14,208 @@ LOG = logging.getLogger(__name__)
 MASK_CHANGE = Mask.CREATE | Mask.MODIFY | Mask.DELETE | Mask.MOVE
 
 
-class Collection:
-    
-    def __init__(self, root: Path):
-        self._root = root
-        self._paths: Dict[Path, Set[str]] = defaultdict(set)
-        self._events: Dict[str, Event] = {}
+class NoEventError(TypeError):
+    pass
 
-    def add(self, path: Path):
+
+class Event:
+
+    __slots__ = ("_calendar", "_filename", "_component")
+
+    def __init__(self, calendar: Optional["Calendar"] = None, filename: Optional[str] = None):
+        self._calendar = calendar
+        self._filename = filename or "{}.ics".format(uuid4())
+        if self._calendar and filename and self.path.exists():
+            self._component = self._load()
+        else:
+            event = vEvent()
+            event["UID"] = str(uuid4())
+            self._component = vCalendar()
+            self._component.add_component(event)
+
+    @property
+    def _event(self):
+        return next(iter(self._component.walk("VEVENT")))  # TODO: multiple VEVENTs in one VCALENDAR
+
+    @property
+    def calendar(self):
+        return self._calendar
+
+    @calendar.setter
+    def calendar(self, calendar: "Calendar"):
+        if self._calendar and self.path.exists():
+            self.path.rename(calendar.path / self._filename)
+        self._calendar = calendar
+
+    @property
+    def filename(self):
+        return self._filename
+
+    @property
+    def path(self):
+        return self._calendar.path / self._filename if self._calendar else None
+
+    @property
+    def uid(self):
+        return str(self._event["UID"])
+
+    @uid.setter
+    def uid(self, uid):
+        self._event["UID"] = uid
+
+    def _load(self):
+        if not self.path:
+            raise NoEventError("File does not exist")
+        with open(self.path, "rb") as raw:
+            component = Component.from_ical(raw.read())
+            try:
+                next(iter(component.walk("VEVENT")))
+            except StopIteration:
+                raise NoEventError("Component does not contain an event") from None
+            else:
+                return component
+
+    def reload(self):
+        self._component = self._load()
+
+    def save(self):
+        with open(self.filename, "wb") as raw:
+            raw.write(self._component.to_ical())
+
+
+class Calendar:
+
+    __slots__ = ("_collection", "_dirname", "_events_by_uid", "_events_by_filename")
+
+    def __init__(self, collection: "Collection", dirname: str):
+        self._collection = collection
+        self._dirname = dirname
+        self._events_by_uid: Dict[str, Event] = {}
+        self._events_by_filename: Dict[str, Event] = {}
+        if self.path.exists():
+            self.scan_events()
+        else:
+            self.path.mkdir()
+
+    @property
+    def collection(self):
+        return self._collection
+
+    @property
+    def dirname(self):
+        return self._dirname
+
+    @property
+    def path(self):
+        return self._collection.path / self._dirname
+
+    @property
+    def events(self):
+        return frozenset(self._events_by_uid.values())
+
+    def add_event(self, event: Event):
+        event.calendar = self
+        self._events_by_uid[event.uid] = event
+        self._events_by_filename[event.filename] = event
+
+    def move_event(self, event: Event, target: "Calendar"):
+        del self._events_by_uid[event.uid]
+        del self._events_by_filename[event.filename]
+        target.add_event(event)
+
+    def load_event(self, filename: str):
+        path = self.path / filename
         try:
-            with open(path, "rb") as raw:
-                cal = Calendar.from_ical(raw.read())
-        except Exception:
-            LOG.warning("Failed to read %s", path, exc_info=True)
-            return
-        for item in cal.subcomponents:
-            if isinstance(item, Event):
-                uid = str(item["uid"])
-                self._paths[path].add(uid)
-                self._events[uid] = item
+            event = Event(self, filename)
+        except NoEventError:
+            LOG.warning("Skipping non-event file: %s", path)
+        else:
+            self.add_event(event)
 
-    def add_dir(self, path: Path):
+    def unload_event(self, filename: str):
+        event = self._events_by_filename.pop(filename)
+        del self._events_by_uid[event.uid]
+
+    def scan_events(self):
         count = 0
-        LOG.debug("Scanning calendar: %s", path.name)
-        for item in path.iterdir():
-            if item.name.endswith(".ics"):
-                self.add(item)
+        LOG.debug("Scanning calendar: %s", self.dirname)
+        for child in self.path.iterdir():
+            if child.name.endswith(".ics"):
+                self.load_event(child.name)
                 count += 1
-        if count:
-            LOG.debug("Added %d events from %s", count, path.name)
+        LOG.debug("Added %d events from %s", count, self.dirname)
 
-    def add_all(self):
-        LOG.debug("Scanning for calendars")
-        for group in self._root.iterdir():
-            if group.is_dir():
-                self.add_dir(group)
-        LOG.debug("Finished scan")
 
-    def remove(self, path: Path):
-        uids = self._paths[path]
-        for uid in uids:
-            del self._events[uid]
-        uids.clear()
+class Collection:
 
-    def remove_dir(self, path: Path):
-        count = 0
-        LOG.debug("Cleaning calendar: %s", path.name)
-        for known in list(self._paths):
-            if known.parent == path:
-                self.remove(known)
-                count += 1
-        if count:
-            LOG.debug("Removed %d events from %s", count, path.name)
+    __slots__ = ("_path", "_calendars")
+    
+    def __init__(self, path: Path):
+        self._path = path
+        self._calendars: Dict[str, Calendar] = {}
+
+    @property
+    def path(self):
+        return self._path
+
+    @property
+    def calendars(self):
+        return frozenset(self._calendars.values())
+
+    async def open_calendar(self, name: str):
+        loop = get_event_loop()
+        return await loop.run_in_executor(None, Calendar, self, name)
+
+    def add_calendar(self, calendar: Calendar):
+        self._calendars[calendar.dirname] = calendar
+
+    def drop_calendar(self, calendar: Calendar):
+        del self._calendars[calendar.dirname]
 
     async def watch(self):
         with Inotify() as inotify:
             watches: Dict[Path, Watch] = {}
             # Watch for new and removed calendar dirs in the root.
-            top = inotify.add_watch(self._root, MASK_CHANGE)
+            top = inotify.add_watch(self.path, MASK_CHANGE)
             # Watch all current directories for new, changed and removed events.
-            for group in self._root.iterdir():
-                if group.is_dir():
-                    LOG.debug("Adding calendar watch: %s", group.name)
-                    watches[group] = inotify.add_watch(group, MASK_CHANGE)
-            LOG.debug("Starting inotify")
-            async for event in inotify:
-                if not event.name:
+            for child in self.path.iterdir():
+                if child.is_dir():
+                    watches[child] = inotify.add_watch(child, MASK_CHANGE)
+            LOG.info("Running initial directory scan")
+            for path in watches:
+                if path.parent == self.path and path.name not in self._calendars:
+                    calendar = await self.open_calendar(path.name)
+                    self.add_calendar(calendar)
+            LOG.info("Listening for filesystem changes")
+            async for change in inotify:
+                if not change.name:
                     continue
-                path = event.watch.path / event.name
-                if event.watch is top:
-                    # Event relates to the group itself.
+                name = str(change.name)
+                path = change.watch.path / change.name
+                if change.watch is top:
+                    # Change relates to the group itself.
                     watched = path in watches
-                    if watched and not path.exists():
-                        # Calendar was deleted or moved out of the root.
-                        LOG.debug("Removing old calendar watch: %s", path.name)
-                        inotify.rm_watch(watches.pop(path))
-                        self.remove_dir(path)
-                    elif not watched and path.is_dir():
+                    if not watched and path.is_dir():
                         # Calendar was created or moved in to the group.
-                        LOG.debug("Adding new calendar watch: %s", path.name)
+                        LOG.debug("Adding new calendar: %s", path.name)
                         watches[path] = inotify.add_watch(path, MASK_CHANGE)
-                        self.add_dir(path)
-                elif event.watch is not top and path.is_file():
-                    LOG.debug("Notifying for file change: %s", path)
+                        calendar = await self.open_calendar(name)
+                        self.add_calendar(calendar)
+                    elif watched and not path.is_dir():
+                        # Calendar was deleted or moved out of the root.
+                        LOG.debug("Removing old calendar: %s", path.name)
+                        # Can't remove the watch if the watched dir was deleted.
+                        if not change.mask & Mask.DELETE:
+                            inotify.rm_watch(watches.pop(path))
+                        calendar = self._calendars[name]
+                        self.drop_calendar(calendar)
+                elif path.is_file():
+                    # Change relates to a calendar item.
+                    dirname = change.watch.path.name
+                    calendar = self._calendars[dirname]
                     if path.exists():
-                        self.add(path)
+                        LOG.debug("Adding new event: %s/%s", dirname, path.name)
+                        calendar.load_event(name)
                     else:
-                        self.remove(path)
+                        LOG.debug("Removing old event: %s/%s", dirname, path.name)
+                        calendar.unload_event(name)
