@@ -1,22 +1,53 @@
 from abc import ABC
 from asyncio.events import get_event_loop
-from datetime import date, datetime
+from collections import defaultdict
+from datetime import date, datetime, timedelta
 from enum import IntEnum
 import logging
 from pathlib import Path
-from typing import Callable, Dict, Generic, Iterable, Optional, Type, TypeVar, Union
+from pytz import UTC
+from typing import (cast, Callable, Dict, Generic, Iterable, List, Optional, overload, Type,
+                    TypeVar, Union)
 from uuid import uuid4
 
 from asyncinotify import Inotify, Mask, Watch
-from icalendar import Calendar as vCalendar, Event as vEvent, Todo as vTodo
+from icalendar import Calendar as vCalendar, Event as vEvent, Todo as vTodo, vText
 from icalendar.cal import Component
 
 
 T = TypeVar("T")
+T2 = TypeVar("T2")
+
 DateMaybeTime = Union[date, datetime]
 
 
 LOG = logging.getLogger(__name__)
+
+
+@overload
+def as_datetime(value: DateMaybeTime) -> datetime: ...
+@overload
+def as_datetime(value: None) -> None: ...
+
+def as_datetime(value: Optional[DateMaybeTime]) -> Optional[datetime]:
+    if isinstance(value, datetime):
+        return value
+    elif isinstance(value, date):
+        return datetime(value.year, value.month, value.day, tzinfo=UTC)
+    else:
+        return value
+
+
+@overload
+def as_date(value: DateMaybeTime) -> date: ...
+@overload
+def as_date(value: None) -> None: ...
+
+def as_date(value: Optional[DateMaybeTime]) -> Optional[date]:
+    if isinstance(value, datetime):
+        return value.date()
+    else:
+        return value
 
 
 def repr_factory(parts: Callable[[T], Iterable[Optional[str]]]) -> Callable[[T], str]:
@@ -36,14 +67,28 @@ class Entry(ABC):
         def __init__(self, field: str):
             self._field = field
         def __get__(self, instance: "Entry", _: Type["Entry"]) -> T:
-            return instance._core.decoded(self._field)
+            node = instance._core[self._field]
+            if isinstance(node, vText):
+                return cast(T, str(node))
+            else:
+                return instance._core.decoded(self._field)
 
-    class MutableProperty(Property[T]):
-        def __get__(self, instance: "Entry", owner: Type["Entry"]) -> Optional[T]:
+    class _DefaultProperty(Property[T], Generic[T, T2]):
+        def __init__(self, field: str, default: T2):
+            super().__init__(field)
+            self._default = default
+        def __get__(self, instance: "Entry", owner: Type["Entry"]) -> Union[T, T2]:
             try:
-                return super().__get__(instance, owner)
+                return super().__get__(instance, owner) or self._default
             except KeyError:
-                return None
+                return self._default
+
+    class DefaultProperty(_DefaultProperty[T, T]):
+        pass
+
+    class MutableProperty(_DefaultProperty[T, None]):
+        def __init__(self, field: str):
+            super().__init__(field, None)
         def __set__(self, instance: "Entry", owner: Type["Entry"], value: Optional[T]):
             self.__del__(instance, owner)
             if value:
@@ -53,14 +98,6 @@ class Entry(ABC):
                 del instance._core[self._field]
             except KeyError:
                 pass
-
-    class DefaultProperty(MutableProperty[T]):
-        def __init__(self, field: str, default: T):
-            super().__init__(field)
-            self._default = default
-        def __get__(self, instance: "Entry", owner: Type["Entry"]) -> T:
-            value = super().__get__(instance, owner)
-            return self._default if value is None else value
 
     _base: Type[Component]
     _types: Dict[str, Type["Entry"]] = {}
@@ -84,6 +121,14 @@ class Entry(ABC):
                 return base(calendar, filename)
         else:
             raise Entry.Invalid("File does not contain any supported components")
+
+    @classmethod
+    def group(cls, entries: Iterable["Entry"]):
+        grouped: Dict[date, List[Entry]] = defaultdict(list)
+        for entry in entries:
+            for day in entry.days:
+                grouped[day].append(entry)
+        return grouped
 
     __slots__ = ("_calendar", "_filename", "_component")
 
@@ -126,6 +171,31 @@ class Entry(ABC):
     start = MutableProperty[DateMaybeTime]("DTSTART")
     end: MutableProperty[DateMaybeTime]
 
+    @property
+    def start_dt(self):
+        return as_datetime(self.start)
+
+    @property
+    def end_dt(self):
+        return as_datetime(self.end)
+
+    @property
+    def start_d(self):
+        return as_date(self.start)
+
+    @property
+    def end_d(self):
+        return as_date(self.end)
+
+    @property
+    def days(self):
+        if self.start_d and self.end_d:
+            length = self.end_d - self.start_d
+            span = range(1, length.days + 1)
+            return [self.start_d] + [self.start_d + timedelta(days=days) for days in span]
+        else:
+            return list(filter(None, (self.start_d, self.end_d)))
+
     def reload(self):
         if not (self.path and self.path.exists()):
             return
@@ -143,6 +213,10 @@ class Entry(ABC):
     def save(self):
         with open(self.filename, "wb") as raw:
             raw.write(self._component.to_ical())
+
+    def __lt__(self, other: "Entry"):
+        default = datetime.now()
+        return (self.start_dt or default) < (other.start_dt or default)
 
     @repr_factory
     def __repr__(self):
@@ -236,21 +310,37 @@ class Calendar:
 
     @property
     def events(self):
-        return frozenset(entry for entry in self.entries if isinstance(entry, Event))
+        return sorted(entry for entry in self.entries if isinstance(entry, Event))
 
     @property
     def tasks(self):
-        return frozenset(entry for entry in self.entries if isinstance(entry, Task))
+        return sorted(entry for entry in self.entries if isinstance(entry, Task))
 
-    def add_entry(self, event: Entry):
-        event.calendar = self
-        self._entries_by_uid[event.uid] = event
-        self._entries_by_filename[event.filename] = event
+    def slice(self, not_before: Optional[datetime] = None, not_after: Optional[datetime] = None):
+        selected: List[Entry] = []
+        for entry in self.entries:
+            if not entry.start_dt or not entry.end_dt:
+                continue
+            elif not_before and entry.end_dt < not_before:
+                continue
+            elif not_after and entry.start_dt >= not_after:
+                continue
+            else:
+                selected.append(entry)
+        return sorted(selected)
 
-    def move_entry(self, event: Entry, target: "Calendar"):
-        del self._entries_by_uid[event.uid]
-        del self._entries_by_filename[event.filename]
-        target.add_entry(event)
+    def add_entry(self, entry: Entry):
+        entry.calendar = self
+        self._entries_by_uid[entry.uid] = entry
+        self._entries_by_filename[entry.filename] = entry
+
+    def move_entry(self, entry: Entry, target: "Calendar"):
+        self.unload_entry(entry.filename)
+        target.add_entry(entry)
+
+    def drop_entry(self, entry: Entry):
+        del self._entries_by_filename[entry.filename]
+        del self._entries_by_uid[entry.uid]
 
     def load_entry(self, filename: str):
         path = self.path / filename
@@ -262,8 +352,7 @@ class Calendar:
             self.add_entry(event)
 
     def unload_entry(self, filename: str):
-        event = self._entries_by_filename.pop(filename)
-        del self._entries_by_uid[event.uid]
+        self.drop_entry(self._entries_by_filename[filename])
 
     def scan_entries(self):
         count = 0
@@ -272,7 +361,7 @@ class Calendar:
             if child.name.endswith(".ics"):
                 self.load_entry(child.name)
                 count += 1
-        LOG.debug("Added %d events from %s", count, self.dirname)
+        LOG.debug("Added %d entries from %s", count, self.dirname)
 
     @repr_factory
     def __repr__(self):
@@ -306,6 +395,12 @@ class Collection:
 
     def drop_calendar(self, calendar: Calendar):
         del self._calendars[calendar.dirname]
+
+    def slice(self, not_before: Optional[datetime] = None, not_after: Optional[datetime] = None):
+        selected: List[Entry] = []
+        for calendar in self.calendars:
+            selected += calendar.slice(not_before, not_after)
+        return sorted(selected)
 
     async def watch(self):
         with Inotify() as inotify:
