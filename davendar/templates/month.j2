@@ -1,0 +1,28 @@
+{% extends "_base.j2" %}
+
+{% block title %}{{ today.year }}-{{ today.month }}{% endblock %}
+
+{% block content %}
+  <div class="month">
+    {% for week in weeks %}
+      {% for date in week %}
+        <div class="day{% if date == today %} today{% elif date.month == month %} current{% endif %}">
+          <div class="date">{{ date.day }}</div>
+          <ul class="entries">
+            {% for entry in entries[date] %}
+              <li>
+                <span class="time">
+                  {%- for time in entry.times -%}
+                    {{- time.strftime("%H:%M") -}}
+                    {%- if not loop.last %}&ndash;{% endif -%}
+                  {%- endfor -%}
+                </span>
+                {{ entry.summary }}
+              </li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endfor %}
+    {% endfor %}
+  </div>
+{% endblock %}

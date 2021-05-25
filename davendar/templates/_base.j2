@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>{% block title %}{% endblock %}{% if self.title() %} &mdash; {% endif %}Davendar</title>
+    <style>
+      html {
+        height: 100%;
+      }
+      body {
+        margin: 0;
+        height: 100%;
+        font-family: "Segoe UI";
+        font-size: 0.8rem;
+      }
+      .nav {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 1rem;
+        padding: 0.25rem;
+        border-bottom: 1px solid #aaa;
+      }
+      .content {
+        position: absolute;
+        bottom: 0;
+        width: 100%;
+        height: calc(100% - 1.5rem - 1px);
+        overflow: auto;
+      }
+      .month {
+        width: 100%;
+        height: 100%;
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        grid-auto-rows: 1fr;
+        grid-gap: 1px;
+        background-color: #aaa;
+      }
+      .month .day {
+        overflow: hidden;
+        position: relative;
+        padding: 0.25rem;
+        background-color: #eee;
+      }
+      .month .day .date {
+        position: absolute;
+        top: 0;
+        right: 0;
+        padding: 0.25rem;
+        background-color: #ddd;
+        border-left: 1px solid #aaa;
+        border-bottom: 1px solid #aaa;
+      }
+      .month .day .entries {
+        list-style-type: none;
+        margin-top: 0;
+        padding-left: 0;
+      }
+      .month .day.current {
+        background-color: #fff;
+      }
+      .month .day.current .date {
+        background-color: #eee;
+      }
+      .month .day.today {
+        background-color: #cef;
+      }
+      .month .day.today .date {
+        background-color: #adf;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="nav">
+      Nav
+    </div>
+    <div class="content">
+      {% block content %}{% endblock %}
+    </div>
+  </body>
+</html>
