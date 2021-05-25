@@ -1,9 +1,10 @@
 from abc import ABC
 from asyncio.events import get_event_loop
+from datetime import date, datetime
 from enum import IntEnum
 import logging
 from pathlib import Path
-from typing import Dict, Optional, Type
+from typing import Callable, Dict, Generic, Iterable, Optional, Type, TypeVar, Union
 from uuid import uuid4
 
 from asyncinotify import Inotify, Mask, Watch
@@ -11,17 +12,55 @@ from icalendar import Calendar as vCalendar, Event as vEvent, Todo as vTodo
 from icalendar.cal import Component
 
 
+T = TypeVar("T")
+DateMaybeTime = Union[date, datetime]
+
+
 LOG = logging.getLogger(__name__)
 
 
-MASK_CHANGE = Mask.CREATE | Mask.MODIFY | Mask.DELETE | Mask.MOVE
-
-
-class MissingEntryError(TypeError):
-    pass
+def repr_factory(parts: Callable[[T], Iterable[Optional[str]]]) -> Callable[[T], str]:
+    def __repr__(self: T):
+        items = " ".join(filter(None, parts(self)))
+        inner = ": ".join(filter(None, (self.__class__.__name__, items)))
+        return "<{}>".format(inner)
+    return __repr__
 
 
 class Entry(ABC):
+
+    class Invalid(TypeError):
+        pass
+
+    class Property(Generic[T]):
+        def __init__(self, field: str):
+            self._field = field
+        def __get__(self, instance: "Entry", _: Type["Entry"]) -> T:
+            return instance._core.decoded(self._field)
+
+    class MutableProperty(Property[T]):
+        def __get__(self, instance: "Entry", owner: Type["Entry"]) -> Optional[T]:
+            try:
+                return super().__get__(instance, owner)
+            except KeyError:
+                return None
+        def __set__(self, instance: "Entry", owner: Type["Entry"], value: Optional[T]):
+            self.__del__(instance, owner)
+            if value:
+                instance._core.add(self._field, value, encode=True)
+        def __del__(self, instance: "Entry", _: Type["Entry"]):
+            try:
+                del instance._core[self._field]
+            except KeyError:
+                pass
+
+    class DefaultProperty(MutableProperty[T]):
+        def __init__(self, field: str, default: T):
+            super().__init__(field)
+            self._default = default
+        def __get__(self, instance: "Entry", owner: Type["Entry"]) -> T:
+            value = super().__get__(instance, owner)
+            return self._default if value is None else value
 
     _base: Type[Component]
     _types: Dict[str, Type["Entry"]] = {}
@@ -35,7 +74,7 @@ class Entry(ABC):
         with open(path, "rb") as raw:
             component = Component.from_ical(raw.read())
         if component.name != "VCALENDAR":
-            raise MissingEntryError("Root component must be a VCALENDAR")
+            raise Entry.Invalid("Root component must be a VCALENDAR")
         for part in component.subcomponents:
             try:
                 base = cls._types[part.name]
@@ -44,7 +83,7 @@ class Entry(ABC):
             else:
                 return base(calendar, filename)
         else:
-            raise MissingEntryError("File does not contain any supported components")
+            raise Entry.Invalid("File does not contain any supported components")
 
     __slots__ = ("_calendar", "_filename", "_component")
 
@@ -81,13 +120,11 @@ class Entry(ABC):
     def path(self):
         return self._calendar.path / self._filename if self._calendar else None
 
-    @property
-    def uid(self):
-       return str(self._core["UID"])
-
-    @uid.setter
-    def uid(self, uid):
-        self._core["UID"] = uid
+    uid = Property[str]("UID")
+    summary = MutableProperty[str]("SUMMARY")
+    created = MutableProperty[datetime]("CREATED")
+    start = MutableProperty[DateMaybeTime]("DTSTART")
+    end: MutableProperty[DateMaybeTime]
 
     def reload(self):
         if not (self.path and self.path.exists()):
@@ -95,17 +132,23 @@ class Entry(ABC):
         with open(self.path, "rb") as raw:
             component = Component.from_ical(raw.read())
         if component.name != "VCALENDAR":
-            raise MissingEntryError("Root component must be a VCALENDAR")
+            raise Entry.Invalid("Root component must be a VCALENDAR")
         for part in component.subcomponents:
             if isinstance(part, self._base):
                 self._component = component
                 break
         else:
-            raise MissingEntryError("File does not contain any supported components")
+            raise Entry.Invalid("File does not contain any supported components")
 
     def save(self):
         with open(self.filename, "wb") as raw:
             raw.write(self._component.to_ical())
+
+    @repr_factory
+    def __repr__(self):
+        return [repr(self.summary),
+                self.start.strftime("%Y-%m-%d %H:%M") if self.start else None,
+                self.end.strftime("%Y-%m-%d %H:%M") if self.end else None]
 
 
 class Event(Entry):
@@ -120,6 +163,8 @@ class Event(Entry):
             event = vEvent()
             event["UID"] = str(uuid4())
             self._component.add_component(event)
+
+    end = Entry.MutableProperty[DateMaybeTime]("DTEND")
 
 
 class Task(Entry):
@@ -139,6 +184,9 @@ class Task(Entry):
             task = vTodo()
             task["UID"] = str(uuid4())
             self._component.add_component(task)
+
+    end = Entry.MutableProperty[DateMaybeTime]("DUE")
+    priority = Entry.DefaultProperty[int]("PRIORITY", 0)
 
     @property
     def priority_3(self) -> Optional[Priority]:
@@ -208,7 +256,7 @@ class Calendar:
         path = self.path / filename
         try:
             event = Entry.load(self, filename)
-        except MissingEntryError as ex:
+        except Entry.Invalid as ex:
             LOG.warning("Skipping non-entry file: %s (%s)", path, ex.args[0])
         else:
             self.add_entry(event)
@@ -226,8 +274,14 @@ class Calendar:
                 count += 1
         LOG.debug("Added %d events from %s", count, self.dirname)
 
+    @repr_factory
+    def __repr__(self):
+        return [repr(self.dirname)]
+
 
 class Collection:
+
+    MASK_CHANGE = Mask.CREATE | Mask.MODIFY | Mask.DELETE | Mask.MOVE
 
     __slots__ = ("_path", "_calendars")
     
@@ -257,11 +311,11 @@ class Collection:
         with Inotify() as inotify:
             watches: Dict[Path, Watch] = {}
             # Watch for new and removed calendar dirs in the root.
-            top = inotify.add_watch(self.path, MASK_CHANGE)
+            top = inotify.add_watch(self.path, self.MASK_CHANGE)
             # Watch all current directories for new, changed and removed events.
             for child in self.path.iterdir():
                 if child.is_dir():
-                    watches[child] = inotify.add_watch(child, MASK_CHANGE)
+                    watches[child] = inotify.add_watch(child, self.MASK_CHANGE)
             LOG.info("Running initial directory scan")
             for path in watches:
                 if path.parent == self.path and path.name not in self._calendars:
@@ -279,7 +333,7 @@ class Collection:
                     if not watched and path.is_dir():
                         # Calendar was created or moved in to the group.
                         LOG.debug("Adding new calendar: %s", path.name)
-                        watches[path] = inotify.add_watch(path, MASK_CHANGE)
+                        watches[path] = inotify.add_watch(path, self.MASK_CHANGE)
                         calendar = await self.open_calendar(name)
                         self.add_calendar(calendar)
                     elif watched and not path.is_dir():
@@ -300,3 +354,7 @@ class Collection:
                     else:
                         LOG.debug("Removing old event: %s/%s", dirname, path.name)
                         calendar.unload_entry(name)
+
+    @repr_factory
+    def __repr__(self):
+        return [repr(str(self.path))]
