@@ -1,11 +1,14 @@
+from abc import ABC
 from asyncio.events import get_event_loop
+from enum import IntEnum
 import logging
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, Type
 from uuid import uuid4
 
 from asyncinotify import Inotify, Mask, Watch
-from icalendar.cal import Component, Calendar as vCalendar, Event as vEvent
+from icalendar import Calendar as vCalendar, Event as vEvent, Todo as vTodo
+from icalendar.cal import Component
 
 
 LOG = logging.getLogger(__name__)
@@ -14,28 +17,51 @@ LOG = logging.getLogger(__name__)
 MASK_CHANGE = Mask.CREATE | Mask.MODIFY | Mask.DELETE | Mask.MOVE
 
 
-class NoEventError(TypeError):
+class MissingEntryError(TypeError):
     pass
 
 
-class Event:
+class Entry(ABC):
+
+    _base: Type[Component]
+    _types: Dict[str, Type["Entry"]] = {}
+
+    def __init_subclass__(cls):
+        cls._types[cls._base.name] = cls
+
+    @classmethod
+    def load(cls, calendar: "Calendar", filename: str):
+        path = calendar.path / filename
+        with open(path, "rb") as raw:
+            component = Component.from_ical(raw.read())
+        if component.name != "VCALENDAR":
+            raise MissingEntryError("Root component must be a VCALENDAR")
+        for part in component.subcomponents:
+            try:
+                base = cls._types[part.name]
+            except KeyError:
+                continue
+            else:
+                return base(calendar, filename)
+        else:
+            raise MissingEntryError("File does not contain any supported components")
 
     __slots__ = ("_calendar", "_filename", "_component")
 
-    def __init__(self, calendar: Optional["Calendar"] = None, filename: Optional[str] = None):
+    def __init__(self, calendar: Optional["Calendar"] = None, filename: Optional[str] = None,
+                 component: Optional[Component] = None):
         self._calendar = calendar
         self._filename = filename or "{}.ics".format(uuid4())
-        if self._calendar and filename and self.path.exists():
-            self._component = self._load()
+        if component:
+            self._component = component
+        elif filename and self.path and self.path.exists():
+            self.reload()
         else:
-            event = vEvent()
-            event["UID"] = str(uuid4())
             self._component = vCalendar()
-            self._component.add_component(event)
 
     @property
-    def _event(self):
-        return next(iter(self._component.walk("VEVENT")))  # TODO: multiple VEVENTs in one VCALENDAR
+    def _core(self) -> Component:  # TODO: multiple component parts in one VCALENDAR
+        return next(iter(self._component.walk(self._base.name)))
 
     @property
     def calendar(self):
@@ -57,43 +83,90 @@ class Event:
 
     @property
     def uid(self):
-        return str(self._event["UID"])
+       return str(self._core["UID"])
 
     @uid.setter
     def uid(self, uid):
-        self._event["UID"] = uid
-
-    def _load(self):
-        if not self.path:
-            raise NoEventError("File does not exist")
-        with open(self.path, "rb") as raw:
-            component = Component.from_ical(raw.read())
-            try:
-                next(iter(component.walk("VEVENT")))
-            except StopIteration:
-                raise NoEventError("Component does not contain an event") from None
-            else:
-                return component
+        self._core["UID"] = uid
 
     def reload(self):
-        self._component = self._load()
+        if not (self.path and self.path.exists()):
+            return
+        with open(self.path, "rb") as raw:
+            component = Component.from_ical(raw.read())
+        if component.name != "VCALENDAR":
+            raise MissingEntryError("Root component must be a VCALENDAR")
+        for part in component.subcomponents:
+            if isinstance(part, self._base):
+                self._component = component
+                break
+        else:
+            raise MissingEntryError("File does not contain any supported components")
 
     def save(self):
         with open(self.filename, "wb") as raw:
             raw.write(self._component.to_ical())
 
 
+class Event(Entry):
+
+    _base = vEvent
+
+    def __init__(self, calendar: Optional["Calendar"] = None, filename: Optional[str] = None):
+        super().__init__(calendar, filename)
+        try:
+            self._core
+        except StopIteration:
+            event = vEvent()
+            event["UID"] = str(uuid4())
+            self._component.add_component(event)
+
+
+class Task(Entry):
+
+    class Priority(IntEnum):
+        LOW = 4
+        MEDIUM = 5
+        HIGH = 6
+
+    _base = vTodo
+
+    def __init__(self, calendar: Optional["Calendar"] = None, filename: Optional[str] = None):
+        super().__init__(calendar, filename)
+        try:
+            self._core
+        except StopIteration:
+            task = vTodo()
+            task["UID"] = str(uuid4())
+            self._component.add_component(task)
+
+    @property
+    def priority_3(self) -> Optional[Priority]:
+        if 1 <= self.priority <= 4:
+            return self.Priority.LOW
+        elif self.priority == 5:
+            return self.Priority.MEDIUM
+        elif 6 <= self.priority <= 9:
+            return self.Priority.HIGH
+        else:
+            return None
+
+    @priority_3.setter
+    def priority_3(self, priority: Optional[Priority]):
+        self.priority = priority.value if priority else 0
+
+
 class Calendar:
 
-    __slots__ = ("_collection", "_dirname", "_events_by_uid", "_events_by_filename")
+    __slots__ = ("_collection", "_dirname", "_entries_by_uid", "_entries_by_filename")
 
     def __init__(self, collection: "Collection", dirname: str):
         self._collection = collection
         self._dirname = dirname
-        self._events_by_uid: Dict[str, Event] = {}
-        self._events_by_filename: Dict[str, Event] = {}
+        self._entries_by_uid: Dict[str, Entry] = {}
+        self._entries_by_filename: Dict[str, Entry] = {}
         if self.path.exists():
-            self.scan_events()
+            self.scan_entries()
         else:
             self.path.mkdir()
 
@@ -110,38 +183,46 @@ class Calendar:
         return self._collection.path / self._dirname
 
     @property
+    def entries(self):
+        return frozenset(self._entries_by_uid.values())
+
+    @property
     def events(self):
-        return frozenset(self._events_by_uid.values())
+        return frozenset(entry for entry in self.entries if isinstance(entry, Event))
 
-    def add_event(self, event: Event):
+    @property
+    def tasks(self):
+        return frozenset(entry for entry in self.entries if isinstance(entry, Task))
+
+    def add_entry(self, event: Entry):
         event.calendar = self
-        self._events_by_uid[event.uid] = event
-        self._events_by_filename[event.filename] = event
+        self._entries_by_uid[event.uid] = event
+        self._entries_by_filename[event.filename] = event
 
-    def move_event(self, event: Event, target: "Calendar"):
-        del self._events_by_uid[event.uid]
-        del self._events_by_filename[event.filename]
-        target.add_event(event)
+    def move_entry(self, event: Entry, target: "Calendar"):
+        del self._entries_by_uid[event.uid]
+        del self._entries_by_filename[event.filename]
+        target.add_entry(event)
 
-    def load_event(self, filename: str):
+    def load_entry(self, filename: str):
         path = self.path / filename
         try:
-            event = Event(self, filename)
-        except NoEventError:
-            LOG.warning("Skipping non-event file: %s", path)
+            event = Entry.load(self, filename)
+        except MissingEntryError as ex:
+            LOG.warning("Skipping non-entry file: %s (%s)", path, ex.args[0])
         else:
-            self.add_event(event)
+            self.add_entry(event)
 
-    def unload_event(self, filename: str):
-        event = self._events_by_filename.pop(filename)
-        del self._events_by_uid[event.uid]
+    def unload_entry(self, filename: str):
+        event = self._entries_by_filename.pop(filename)
+        del self._entries_by_uid[event.uid]
 
-    def scan_events(self):
+    def scan_entries(self):
         count = 0
         LOG.debug("Scanning calendar: %s", self.dirname)
         for child in self.path.iterdir():
             if child.name.endswith(".ics"):
-                self.load_event(child.name)
+                self.load_entry(child.name)
                 count += 1
         LOG.debug("Added %d events from %s", count, self.dirname)
 
@@ -215,7 +296,7 @@ class Collection:
                     calendar = self._calendars[dirname]
                     if path.exists():
                         LOG.debug("Adding new event: %s/%s", dirname, path.name)
-                        calendar.load_event(name)
+                        calendar.load_entry(name)
                     else:
                         LOG.debug("Removing old event: %s/%s", dirname, path.name)
-                        calendar.unload_event(name)
+                        calendar.unload_entry(name)
