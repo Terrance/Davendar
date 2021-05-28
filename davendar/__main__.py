@@ -9,6 +9,7 @@ from jinja2 import PackageLoader
 
 from .collection import Collection
 from .routes import router
+from .utils import FILTERS, GLOBALS
 
 
 LOG = logging.getLogger(__name__)
@@ -24,6 +25,8 @@ def main(port: int, root: Path):
     coll = Collection(root)
     env = aiohttp_jinja2.setup(app, loader=PackageLoader(__package__))
     app["collection"] = env.globals["collection"] = coll
+    env.filters.update(FILTERS)
+    env.globals.update(GLOBALS)
     app.add_routes(router)
     app.on_startup.append(_init_collection)
     LOG.debug("Starting web server (port: %d)", port)

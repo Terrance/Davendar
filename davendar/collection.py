@@ -1,8 +1,9 @@
 from abc import ABC
 from asyncio.events import get_event_loop
 from collections import defaultdict
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from enum import IntEnum
+import json
 import logging
 from pathlib import Path
 from pytz import UTC
@@ -46,6 +47,20 @@ def as_date(value: None) -> None: ...
 def as_date(value: Optional[DateMaybeTime]) -> Optional[date]:
     if isinstance(value, datetime):
         return value.date()
+    else:
+        return value
+
+
+@overload
+def as_time(value: DateMaybeTime) -> time: ...
+@overload
+def as_time(value: None) -> None: ...
+
+def as_time(value: Optional[DateMaybeTime]) -> Optional[time]:
+    if isinstance(value, datetime):
+        return value.time()
+    elif isinstance(value, date):
+        return time()
     else:
         return value
 
@@ -188,13 +203,31 @@ class Entry(ABC):
         return as_date(self.end)
 
     @property
+    def start_t(self):
+        return as_time(self.start)
+
+    @property
+    def end_t(self):
+        return as_time(self.end)
+
+    @property
+    def all_day(self):
+        return self.start == self.start_d
+
+    @property
     def days(self):
         if self.start_d and self.end_d:
             length = self.end_d - self.start_d
+            if self.end_t == time():
+                length -= timedelta(days=1)
             span = range(1, length.days + 1)
             return [self.start_d] + [self.start_d + timedelta(days=days) for days in span]
         else:
             return list(filter(None, (self.start_d, self.end_d)))
+
+    @property
+    def times(self):
+        return list(filter(None, (self.start_dt.time(), self.end_dt.time())))
 
     def reload(self):
         if not (self.path and self.path.exists()):
@@ -215,7 +248,7 @@ class Entry(ABC):
             raw.write(self._component.to_ical())
 
     def __lt__(self, other: "Entry"):
-        default = datetime.now()
+        default = datetime.utcnow().replace(tzinfo=UTC)
         return (self.start_dt or default) < (other.start_dt or default)
 
     @repr_factory
@@ -280,15 +313,18 @@ class Task(Entry):
 
 class Calendar:
 
-    __slots__ = ("_collection", "_dirname", "_entries_by_uid", "_entries_by_filename")
+    __slots__ = ("_collection", "_dirname", "_entries_by_uid", "_entries_by_filename",
+                 "label", "colour")
 
     def __init__(self, collection: "Collection", dirname: str):
         self._collection = collection
         self._dirname = dirname
         self._entries_by_uid: Dict[str, Entry] = {}
         self._entries_by_filename: Dict[str, Entry] = {}
+        self.label = self.colour = None
         if self.path.exists():
             self.scan_entries()
+            self.scan_metadata()
         else:
             self.path.mkdir()
 
@@ -363,6 +399,19 @@ class Calendar:
                 count += 1
         LOG.debug("Added %d entries from %s", count, self.dirname)
 
+    def scan_metadata(self):
+        radicale = self.path / ".Radicale.props"
+        if radicale.exists():
+            try:
+                with open(radicale) as props:
+                    meta = json.load(props)
+            except Exception:
+                pass
+            else:
+                self.label = meta.get("D:displayname")
+                self.colour = meta.get("ICAL:calendar-color")
+                LOG.debug("Identified calendar %r as %r", self.dirname, self.label)
+
     @repr_factory
     def __repr__(self):
         return [repr(self.dirname)]
@@ -373,7 +422,7 @@ class Collection:
     MASK_CHANGE = Mask.CREATE | Mask.MODIFY | Mask.DELETE | Mask.MOVE
 
     __slots__ = ("_path", "_calendars")
-    
+
     def __init__(self, path: Path):
         self._path = path
         self._calendars: Dict[str, Calendar] = {}

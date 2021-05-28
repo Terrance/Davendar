@@ -1,0 +1,28 @@
+{% extends "_base.j2" %}
+
+{% block title %}{{ selected.strftime("%A %d %B %Y") }}{% endblock %}
+
+{% set next = selected | delta(days=1) %}
+{% set prev = selected | delta(days=-1) %}
+
+{% block nav %}
+  <li><a href="{{ url("day", year=prev.year, month=prev.month, day=prev.day) }}">&larr;</a></li>
+  <li>{{ selected.strftime("%Y-%m-%d") }}</li>
+  <li><a href="{{ url("day", year=next.year, month=next.month, day=next.day) }}">&rarr;</a></li>
+{% endblock %}
+
+{% block content %}
+  <ul>
+    {% for entry in entries %}
+      <li>
+        <span class="time">
+          {%- for time in entry.times -%}
+            {{- time.strftime("%H:%M") -}}
+            {%- if not loop.last %}&ndash;{% endif -%}
+          {%- endfor -%}
+        </span>
+        {{ entry.summary }}
+      </li>
+    {% endfor %}
+  </ul>
+{% endblock %}
