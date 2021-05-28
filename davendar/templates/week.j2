@@ -1,0 +1,41 @@
+{% extends "_base.j2" %}
+{% from "_macros.j2" import icon %}
+
+{% block title %}Week {{ selected.week }}, {{ selected.day(3).strftime("%B %Y") }}{% endblock %}
+
+{% block nav %}
+  <li><a href="{{ url("week", year=prev.year, week=prev.week) }}">&larr;</a></li>
+  <li>{{ selected.day(3).strftime("%Y") }}-w{{ selected.week }}</li>
+  <li><a href="{{ url("week", year=next.year, week=next.week) }}">&rarr;</a></li>
+{% endblock %}
+
+{% block content %}
+  <div class="week">
+    {% for date in selected.days() %}
+      <div>{{ date.strftime("%A") }}<br>{{ date.strftime("%d %B %Y") }}</div>
+      <div>
+        <ul class="agenda">
+          {% for entry in entries[date] if entry.all_day %}
+            <li>{{ icon(entry) }} {{ entry.summary }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div>
+        <ul class="agenda">
+          {% for entry in entries[date] if not entry.all_day %}
+            <li>
+              {{ icon(entry) }}
+              <span class="time">
+                {%- for time in entry.times -%}
+                  {{- time.strftime("%H:%M") -}}
+                  {%- if not loop.last %}&ndash;{% endif -%}
+                {%- endfor -%}
+              </span>
+              {{ entry.summary }}
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endfor %}
+  </div>
+{% endblock %}

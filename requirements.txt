@@ -1,4 +1,5 @@
 aiohttp
 asyncinotify
 icalendar
+isoweek
 pytz

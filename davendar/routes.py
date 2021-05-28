@@ -5,6 +5,7 @@ from pytz import UTC
 
 from aiohttp import web
 import aiohttp_jinja2
+from isoweek import Week
 
 from .collection import as_datetime, Collection, Entry
 
@@ -30,6 +31,23 @@ async def month(request: web.Request):
         "entries": Entry.group(coll.slice(start, end)),
         "weeks": dates,
         "selected": date(year, month, 1),
+    }
+
+
+@router.get(r"/{year:\d{4}}/w{week:\d{1,2}}", name="week")
+@aiohttp_jinja2.template("week.j2")
+async def week(request: web.Request):
+    coll: Collection = request.app["collection"]
+    year = int(request.match_info["year"])
+    weeknum = int(request.match_info["week"])
+    week = Week(year, weeknum)
+    start = as_datetime(week.day(0))
+    end = start + timedelta(days=7)
+    return {
+        "entries": Entry.group(coll.slice(start, end)),
+        "selected": week,
+        "prev": Week.withdate(start - timedelta(days=1)),
+        "next": Week.withdate(end + timedelta(days=1)),
     }
 
 

@@ -7,70 +7,21 @@ import json
 import logging
 from pathlib import Path
 from pytz import UTC
-from typing import (cast, Callable, Dict, Generic, Iterable, List, Optional, overload, Type,
-                    TypeVar, Union)
+from typing import cast, Dict, Generic, Iterable, List, Optional, Type, TypeVar, Union
 from uuid import uuid4
 
 from asyncinotify import Inotify, Mask, Watch
 from icalendar import Calendar as vCalendar, Event as vEvent, Todo as vTodo, vText
 from icalendar.cal import Component
 
+from .utils import as_date, as_datetime, as_time, DateMaybeTime, repr_factory
+
 
 T = TypeVar("T")
 T2 = TypeVar("T2")
 
-DateMaybeTime = Union[date, datetime]
-
 
 LOG = logging.getLogger(__name__)
-
-
-@overload
-def as_datetime(value: DateMaybeTime) -> datetime: ...
-@overload
-def as_datetime(value: None) -> None: ...
-
-def as_datetime(value: Optional[DateMaybeTime]) -> Optional[datetime]:
-    if isinstance(value, datetime):
-        return value
-    elif isinstance(value, date):
-        return datetime(value.year, value.month, value.day, tzinfo=UTC)
-    else:
-        return value
-
-
-@overload
-def as_date(value: DateMaybeTime) -> date: ...
-@overload
-def as_date(value: None) -> None: ...
-
-def as_date(value: Optional[DateMaybeTime]) -> Optional[date]:
-    if isinstance(value, datetime):
-        return value.date()
-    else:
-        return value
-
-
-@overload
-def as_time(value: DateMaybeTime) -> time: ...
-@overload
-def as_time(value: None) -> None: ...
-
-def as_time(value: Optional[DateMaybeTime]) -> Optional[time]:
-    if isinstance(value, datetime):
-        return value.time()
-    elif isinstance(value, date):
-        return time()
-    else:
-        return value
-
-
-def repr_factory(parts: Callable[[T], Iterable[Optional[str]]]) -> Callable[[T], str]:
-    def __repr__(self: T):
-        items = " ".join(filter(None, parts(self)))
-        inner = ": ".join(filter(None, (self.__class__.__name__, items)))
-        return "<{}>".format(inner)
-    return __repr__
 
 
 class Entry(ABC):

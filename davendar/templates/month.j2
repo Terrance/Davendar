@@ -1,4 +1,5 @@
 {% extends "_base.j2" %}
+{% from "_macros.j2" import icon %}
 
 {% block title %}{{ selected.strftime("%B %Y") }}{% endblock %}
 
@@ -20,7 +21,7 @@
           <ul class="entries">
             {% for entry in entries[date] %}
               <li>
-                <span class="icon"{% if entry.calendar.colour %} style="color: {{ entry.calendar.colour }}"{% endif %}>{% if entry.all_day %}&#9632;{% else %}&#9670;{% endif %}</span>
+                {{ icon(entry) }}
                 {% if not entry.all_day %}
                   <span class="time">
                     {%- for time in entry.times -%}

@@ -12,17 +12,21 @@
         font-family: "Segoe UI";
         font-size: 0.8rem;
       }
-      .nav ul {
+      .nav {
         position: absolute;
         top: 0;
         left: 0;
         right: 0;
         height: 1rem;
+        padding: 0.25rem;
+        border-bottom: 1px solid #aaa;
+      }
+      .nav ul {
+        display: inline-block;
         margin-top: 0;
         margin-bottom: 0;
-        padding: 0.25rem;
+        padding-left: 0;
         list-style-type: none;
-        border-bottom: 1px solid #aaa;
       }
       .nav li {
         display: inline;
@@ -31,7 +35,7 @@
         text-decoration: none;
       }
       .nav .right {
-        text-align: right;
+        float: right;
       }
       .content {
         position: absolute;
@@ -95,6 +99,10 @@
       .month .day.today .date {
         background-color: #adf;
       }
+      ul.agenda {
+        padding-left: 0;
+        list-style-type: none;
+      }
     </style>
   </head>
   <body>
@@ -104,6 +112,7 @@
       </ul>
       <ul class="right">
         <li><a href="{{ url("month", year=now.year, month=now.month) }}">Month</a></li>
+        <li><a href="{{ url("week", year=now_week.year, week=now_week.week) }}">Week</a></li>
         <li><a href="{{ url("day", year=now.year, month=now.month, day=now.day) }}">Day</a></li>
       </ul>
     </div>

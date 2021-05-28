@@ -1,4 +1,5 @@
 {% extends "_base.j2" %}
+{% from "_macros.j2" import icon %}
 
 {% block title %}{{ selected.strftime("%A %d %B %Y") }}{% endblock %}
 
@@ -12,15 +13,19 @@
 {% endblock %}
 
 {% block content %}
-  <ul>
+  <h2>{{ selected.strftime("%A %d %B %Y") }}</h2>
+  <ul class="agenda">
     {% for entry in entries %}
       <li>
-        <span class="time">
-          {%- for time in entry.times -%}
-            {{- time.strftime("%H:%M") -}}
-            {%- if not loop.last %}&ndash;{% endif -%}
-          {%- endfor -%}
-        </span>
+        {{ icon(entry) }}
+        {% if not entry.all_day %}
+          <span class="time">
+            {%- for time in entry.times -%}
+              {{- time.strftime("%H:%M") -}}
+              {%- if not loop.last %}&ndash;{% endif -%}
+            {%- endfor -%}
+          </span>
+        {% endif %}
         {{ entry.summary }}
       </li>
     {% endfor %}
