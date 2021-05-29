@@ -1,5 +1,5 @@
 {% extends "_base.j2" %}
-{% from "_macros.j2" import icon %}
+{% from "_macros.j2" import icon, times %}
 
 {% block title %}Week {{ selected.week }}, {{ selected.day(3).strftime("%B %Y") }}{% endblock %}
 
@@ -25,12 +25,7 @@
           {% for entry in entries[date] if not entry.all_day %}
             <li>
               {{ icon(entry) }}
-              <span class="time">
-                {%- for time in entry.times -%}
-                  {{- time.strftime("%H:%M") -}}
-                  {%- if not loop.last %}&ndash;{% endif -%}
-                {%- endfor -%}
-              </span>
+              {{ times(entry, date) }}
               {{ entry.summary }}
             </li>
           {% endfor %}

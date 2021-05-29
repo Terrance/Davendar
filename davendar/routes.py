@@ -17,6 +17,13 @@ CAL = Calendar()
 router = web.RouteTableDef()
 
 
+@router.get(r"/")
+async def redirect(request: web.Request):
+    today = date.today()
+    url = request.app.router["month"].url_for(year=str(today.year), month=str(today.month))
+    return web.HTTPTemporaryRedirect(url)
+
+
 @router.get(r"/{year:\d{4}}/{month:\d{1,2}}", name="month")
 @aiohttp_jinja2.template("month.j2")
 async def month(request: web.Request):

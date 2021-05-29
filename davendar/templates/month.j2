@@ -1,5 +1,5 @@
 {% extends "_base.j2" %}
-{% from "_macros.j2" import icon %}
+{% from "_macros.j2" import icon, times %}
 
 {% block title %}{{ selected.strftime("%B %Y") }}{% endblock %}
 
@@ -18,18 +18,11 @@
       {% for date in week %}
         <div class="day{% if date == now.date() %} today{% elif date.month == selected.month %} current{% endif %}">
           <div class="date"><a href="{{ url("day", year=date.year, month=date.month, day=date.day) }}">{{ date.day }}</a></div>
-          <ul class="entries">
+          <ul class="agenda">
             {% for entry in entries[date] %}
               <li>
                 {{ icon(entry) }}
-                {% if not entry.all_day %}
-                  <span class="time">
-                    {%- for time in entry.times -%}
-                      {{- time.strftime("%H:%M") -}}
-                      {%- if not loop.last %}&ndash;{% endif -%}
-                    {%- endfor -%}
-                  </span>
-                {% endif %}
+                {{ times(entry, date) }}
                 {{ entry.summary }}
               </li>
             {% endfor %}

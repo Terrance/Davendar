@@ -1,5 +1,5 @@
 {% extends "_base.j2" %}
-{% from "_macros.j2" import icon %}
+{% from "_macros.j2" import icon, times %}
 
 {% block title %}{{ selected.strftime("%A %d %B %Y") }}{% endblock %}
 
@@ -18,14 +18,7 @@
     {% for entry in entries %}
       <li>
         {{ icon(entry) }}
-        {% if not entry.all_day %}
-          <span class="time">
-            {%- for time in entry.times -%}
-              {{- time.strftime("%H:%M") -}}
-              {%- if not loop.last %}&ndash;{% endif -%}
-            {%- endfor -%}
-          </span>
-        {% endif %}
+        {{ times(entry, selected.date()) }}
         {{ entry.summary }}
       </li>
     {% endfor %}

@@ -4,3 +4,44 @@
     {%- if entry.calendar.label %} title="{{ entry.calendar.label }}"{% endif -%}
   >{% if entry.all_day %}&#9632;{% else %}&#9670;{% endif %}</span>
 {%- endmacro %}
+
+{% macro times(entry, date) -%}
+  {%- if entry.all_day -%}
+    {%- set days = entry.days -%}
+    {%- if date in days and days | length > 1 -%}
+      {%- set start = days | min %}
+      {%- set end = days | max %}
+      <span class="times">
+        {%- if date == start -%}
+          &#8614;
+        {%- elif date == end -%}
+          &#8612;
+        {%- else -%}
+          &#8596;
+        {%- endif -%}
+      </span>
+    {%- endif -%}
+  {%- else -%}
+    {%- set pair = entry.times(date) -%}
+    {%- if pair -%}
+      <span class="times">
+        {%- set start, end = pair -%}
+        {%- if start -%}
+          {{- start.strftime("%H:%M") -}}
+        {%- elif end -%}
+          &larr;
+        {%- endif -%}
+        {%- if start and end -%}
+          &ndash;
+        {%- elif not start and not end -%}
+          &#8596;
+        {%- endif -%}
+        {%- if end -%}
+          {{- end.strftime("%H:%M") -}}
+        {%- elif start -%}
+          &rarr;
+        {%- endif -%}
+      </span>
+    {%- endif -%}
+  {%- endif -%}
+{%- endmacro %}
