@@ -32,7 +32,7 @@ def as_datetime(value: Optional[DateMaybeTime]) -> Optional[datetime]:
     if isinstance(value, datetime):
         return value.astimezone()
     elif isinstance(value, date):
-        return datetime(value.year, value.month, value.day, tzinfo=UTC).astimezone()
+        return datetime(value.year, value.month, value.day).astimezone()
     else:
         return value
 
@@ -44,7 +44,7 @@ def as_date(value: None) -> None: ...
 
 def as_date(value: Optional[DateMaybeTime]) -> Optional[date]:
     if isinstance(value, datetime):
-        return value.date()
+        return value.astimezone().date()
     else:
         return value
 
@@ -56,9 +56,9 @@ def as_time(value: None) -> None: ...
 
 def as_time(value: Optional[DateMaybeTime]) -> Optional[time]:
     if isinstance(value, datetime):
-        return value.time()
+        return value.astimezone().timetz()
     elif isinstance(value, date):
-        return time()
+        return datetime(value.year, value.month, value.day).astimezone().timetz()
     else:
         return value
 

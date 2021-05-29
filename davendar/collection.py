@@ -1,12 +1,11 @@
 from abc import ABC
 from asyncio.events import get_event_loop
 from collections import defaultdict
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, timedelta
 from enum import IntEnum
 import json
 import logging
 from pathlib import Path
-from pytz import UTC
 from typing import cast, Dict, Generic, Iterable, List, Optional, Type, TypeVar, Union
 from uuid import uuid4
 
@@ -167,18 +166,34 @@ class Entry(ABC):
 
     @property
     def days(self):
-        if self.start_d and self.end_d:
-            length = self.end_d - self.start_d
-            if self.end_t == time():
-                length -= timedelta(days=1)
-            span = range(1, length.days + 1)
-            return [self.start_d] + [self.start_d + timedelta(days=days) for days in span]
+        start = end = None
+        if self.start_d:
+            start = datetime(self.start_d.year, self.start_d.month, self.start_d.day).astimezone()
+        if self.end_d:
+            end = datetime(self.end_d.year, self.end_d.month, self.end_d.day).astimezone()
+            if self.end_t == end.timetz():
+                end -= timedelta(days=1)
+        if start and end:
+            span = range(1, (end - start).days + 1)
+            return (self.start_d,) + tuple(self.start_d + timedelta(days=offset) for offset in span)
         else:
-            return list(filter(None, (self.start_d, self.end_d)))
+            return tuple(filter(None, (start.date(), end.date())))
 
-    @property
-    def times(self):
-        return list(filter(None, (self.start_dt.time(), self.end_dt.time())))
+    def times(self, day: date):
+        start = end = None
+        lower = datetime(day.year, day.month, day.day).astimezone()
+        upper = lower + timedelta(days=1)
+        if self.start:
+            if self.start_dt >= upper:
+                return None
+            elif self.start_dt >= lower:
+                start = self.start_t
+        if self.end:
+            if self.end_dt <= lower:
+                return None
+            elif self.end_dt <= upper:
+                end = self.end_t
+        return (start, end)
 
     def reload(self):
         if not (self.path and self.path.exists()):
@@ -199,7 +214,7 @@ class Entry(ABC):
             raw.write(self._component.to_ical())
 
     def __lt__(self, other: "Entry"):
-        default = datetime.utcnow().replace(tzinfo=UTC)
+        default = datetime.now().astimezone()
         return (self.start_dt or default) < (other.start_dt or default)
 
     @repr_factory

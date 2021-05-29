@@ -1,7 +1,6 @@
 from calendar import Calendar
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 import logging
-from pytz import UTC
 
 from aiohttp import web
 import aiohttp_jinja2
@@ -58,7 +57,7 @@ async def day(request: web.Request):
     year = int(request.match_info["year"])
     month = int(request.match_info["month"])
     day = int(request.match_info["day"])
-    start = datetime(year, month, day, tzinfo=UTC)
+    start = as_datetime(date(year, month, day))
     end = start + timedelta(days=1)
     return {
         "entries": coll.slice(start, end),
