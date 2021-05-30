@@ -168,16 +168,17 @@ class Entry(ABC):
     def days(self):
         start = end = None
         if self.start_d:
-            start = datetime(self.start_d.year, self.start_d.month, self.start_d.day).astimezone()
+            start = self.start_d
         if self.end_d:
-            end = datetime(self.end_d.year, self.end_d.month, self.end_d.day).astimezone()
-            if self.end_t == end.timetz():
+            end = self.end_d
+            midnight = datetime(end.year, end.month, end.day).astimezone().timetz()
+            if self.end_t == midnight:
                 end -= timedelta(days=1)
         if start and end:
             span = range(1, (end - start).days + 1)
-            return (self.start_d,) + tuple(self.start_d + timedelta(days=offset) for offset in span)
+            return (start,) + tuple(start + timedelta(days=offset) for offset in span)
         else:
-            return tuple(filter(None, (start.date(), end.date())))
+            return tuple(filter(None, (start, end)))
 
     def times(self, day: date):
         start = end = None
