@@ -289,6 +289,8 @@ class Calendar:
         self._entries_by_uid: Dict[str, Entry] = {}
         self._entries_by_filename: Dict[str, Entry] = {}
         self.label = self.colour = None
+
+    def sync(self):
         if self.path.exists():
             self.scan_entries()
             self.scan_metadata()
@@ -404,7 +406,12 @@ class Collection:
 
     async def open_calendar(self, name: str):
         loop = get_event_loop()
-        return await loop.run_in_executor(None, Calendar, self, name)
+        calendar = Calendar(self, name)
+        try:
+            await loop.run_in_executor(None, calendar.sync)
+        except Exception:
+            LOG.warning("Failed to sync calendar", exc_info=True)
+        return calendar
 
     def add_calendar(self, calendar: Calendar):
         self._calendars[calendar.dirname] = calendar
