@@ -3,7 +3,6 @@ from typing import Any, Callable, Dict, Iterable, Optional, TypeVar, Union, over
 
 from dateutil.relativedelta import relativedelta
 from isoweek import Week
-from pytz import UTC
 
 
 T = TypeVar("T")
@@ -14,13 +13,15 @@ Func = Callable[..., Any]
 FILTERS: Dict[str, Func] = {}
 
 GLOBALS: Dict[str, Any] = {
-    "months": [
-        "January", "February", "March", "April", "May", "June",
-        "July", "August", "September", "October", "November", "December",
-    ],
-    "now": datetime.now(),
-    "now_week": Week.thisweek(),
+    "months": [date(2000, month, 1).strftime("%B") for month in range(1, 13)],
 }
+
+
+def dynamic_globals():
+    return {
+        "now": datetime.now(),
+        "now_week": Week.thisweek(),
+    }
 
 
 @overload
