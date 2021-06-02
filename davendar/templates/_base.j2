@@ -42,7 +42,8 @@
         bottom: 0;
         width: 100%;
         height: calc(100% - 1.5rem - 1px);
-        overflow: auto;
+        overflow-x: hidden;
+        overflow-y: auto;
       }
       .month {
         width: 100%;
@@ -96,11 +97,48 @@
       .month .day.today .date {
         background-color: #adf;
       }
-      ul.agenda {
+      .week {
+        display: grid;
+        width: 100%;
+        height: 100%;
+        grid-template-columns: auto auto 1fr;
+        grid-template-rows: repeat(7, 1fr);
+        grid-gap: 1px;
+        background-color: #aaa;
+      }
+      .week div {
+        background-color: #fff;
+      }
+      ul.agenda, ul.graph {
+        position: relative;
         margin-top: 0;
         margin-bottom: 0;
         padding-left: 0;
         list-style-type: none;
+      }
+      ul.graph li {
+        position: absolute;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      ul.graph li span {
+        white-space: nowrap;
+        margin: 0 -0.25rem;
+        padding: 0 0.25rem;
+      }
+      ul.graph li .bar {
+        display: inline-block;
+        width: 100%;
+        height: 0;
+        border-bottom: 2px solid;
+      }
+      ul.graph li:hover {
+        overflow: visible;
+      }
+      ul.graph li:hover span {
+        position: relative;
+        z-index: 1;
+        background-color: #fff;
       }
     </style>
   </head>

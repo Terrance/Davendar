@@ -74,11 +74,21 @@ def repr_factory(parts: Callable[[T], Iterable[Optional[str]]]) -> Callable[[T],
 
 def add_filter(fn: Func):
     FILTERS[fn.__name__] = fn
+    return fn
 
 def add_global(fn: Func):
     GLOBALS[fn.__name__] = fn
+    return fn
 
 
 @add_filter
 def delta(value: date, **kwargs):
     return value + relativedelta(**kwargs)
+
+
+@add_filter
+def day_percent(value: Optional[time]):
+    if value:
+        return 100 * ((value.hour + (value.minute + value.second / 60) / 60) / 24)
+    else:
+        return None

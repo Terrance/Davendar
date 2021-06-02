@@ -15,11 +15,21 @@
 {% block content %}
   <h2>{{ selected.strftime("%A %d %B %Y") }}</h2>
   <ul class="agenda">
-    {% for entry in entries %}
+    {% for entry in entries if entry.all_day %}
       <li>
         {{ icon(entry) }}
-        {{ times(entry, selected.date()) }}
         {{ entry.summary }}
+      </li>
+    {% endfor %}
+  </ul>
+  <ul class="graph">
+    {% for entry in entries if not entry.all_day %}
+      {% set start, end = entry.times(selected.date()) %}
+      {% set start_pc = start | day_percent | default(0, true) %}
+      {% set end_pc = end | day_percent | default(100, true) %}
+      <li style="top: {{ loop.index0 * 2 }}rem; left: {{ start_pc }}%; width: {{ end_pc - start_pc }}%">
+        <div class="bar"{% if entry.calendar.colour %} style="border-bottom-color: {{ entry.calendar.colour }}"{% endif %}></div>
+        <span>{{ entry.summary }}</span>
       </li>
     {% endfor %}
   </ul>

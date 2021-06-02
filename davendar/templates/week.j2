@@ -21,12 +21,14 @@
         </ul>
       </div>
       <div>
-        <ul class="agenda">
+        <ul class="graph">
           {% for entry in entries[date] if not entry.all_day %}
-            <li>
-              {{ icon(entry) }}
-              {{ times(entry, date) }}
-              {{ entry.summary }}
+            {% set start, end = entry.times(date) %}
+            {% set start_pc = start | day_percent | default(0, true) %}
+            {% set end_pc = end | day_percent | default(100, true) %}
+            <li style="left: {{ start_pc }}%; width: {{ end_pc - start_pc }}%">
+              <div class="bar"{% if entry.calendar.colour %} style="border-bottom-color: {{ entry.calendar.colour }}"{% endif %}></div>
+              <span>{{ entry.summary }}</span>
             </li>
           {% endfor %}
         </ul>

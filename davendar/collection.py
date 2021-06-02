@@ -326,7 +326,7 @@ class Calendar:
         for entry in self.entries:
             if not entry.start_dt or not entry.end_dt:
                 continue
-            elif not_before and entry.end_dt < not_before:
+            elif not_before and entry.end_dt <= not_before:
                 continue
             elif not_after and entry.start_dt >= not_after:
                 continue
