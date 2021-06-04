@@ -12,6 +12,7 @@ from uuid import uuid4
 from asyncinotify import Inotify, Mask, Watch
 from icalendar import Calendar as vCalendar, Event as vEvent, Todo as vTodo, vText
 from icalendar.cal import Component
+from recurring_ical_events import of as recurrences_of
 
 from .utils import as_date, as_datetime, as_time, DateMaybeTime, repr_factory
 
@@ -98,7 +99,7 @@ class Entry(ABC):
     __slots__ = ("_calendar", "_filename", "_component")
 
     def __init__(self, calendar: Optional["Calendar"] = None, filename: Optional[str] = None,
-                 component: Optional[Component] = None):
+                 component: Optional[Component] = None, virtual: bool = False):
         self._calendar = calendar
         self._filename = filename or "{}.ics".format(uuid4())
         if component:
@@ -107,10 +108,15 @@ class Entry(ABC):
             self.reload()
         else:
             self._component = vCalendar()
+        self._virtual = virtual
 
     @property
-    def _core(self) -> Component:  # TODO: multiple component parts in one VCALENDAR
-        return next(iter(self._component.walk(self._base.name)))
+    def _core(self) -> Component:
+        cores = self._component.walk(self._base.name)
+        if len(cores) == 1:
+            return cores[0]
+        else:
+            return next(core for core in cores if "RRULE" in core or "RDATE" in core)
 
     @property
     def calendar(self):
@@ -196,6 +202,11 @@ class Entry(ABC):
                 end = self.end_t
         return (start, end)
 
+    def recurrence(self, start: date, end: date):
+        components = recurrences_of(self._component).between(start, end)
+        return [self.__class__(calendar=self.calendar, component=component, virtual=True)
+                for component in components]
+
     def reload(self):
         if not (self.path and self.path.exists()):
             return
@@ -211,7 +222,11 @@ class Entry(ABC):
             raise Entry.Invalid("File does not contain any supported components")
 
     def save(self):
-        with open(self.filename, "wb") as raw:
+        if self._virtual:
+            raise ValueError("Entry is virtual")
+        if not self.path:
+            raise ValueError("Must assign event to a calendar before saving")
+        with open(self.path, "wb") as raw:
             raw.write(self._component.to_ical())
 
     def __lt__(self, other: "Entry"):
@@ -229,8 +244,9 @@ class Event(Entry):
 
     _base = vEvent
 
-    def __init__(self, calendar: Optional["Calendar"] = None, filename: Optional[str] = None):
-        super().__init__(calendar, filename)
+    def __init__(self, calendar: Optional["Calendar"] = None, filename: Optional[str] = None,
+                 component: Optional[Component] = None, virtual: bool = False):
+        super().__init__(calendar, filename, component, virtual)
         try:
             self._core
         except StopIteration:
@@ -250,8 +266,9 @@ class Task(Entry):
 
     _base = vTodo
 
-    def __init__(self, calendar: Optional["Calendar"] = None, filename: Optional[str] = None):
-        super().__init__(calendar, filename)
+    def __init__(self, calendar: Optional["Calendar"] = None, filename: Optional[str] = None,
+                 component: Optional[Component] = None, virtual: bool = False):
+        super().__init__(calendar, filename, component, virtual)
         try:
             self._core
         except StopIteration:
@@ -321,17 +338,25 @@ class Calendar:
     def tasks(self):
         return sorted(entry for entry in self.entries if isinstance(entry, Task))
 
-    def slice(self, not_before: Optional[datetime] = None, not_after: Optional[datetime] = None):
+    def slice(self, not_before: datetime, not_after: datetime):
         selected: List[Entry] = []
+        before_date = as_date(not_before)
+        after_date = as_date(not_after)
         for entry in self.entries:
-            if not entry.start_dt or not entry.end_dt:
-                continue
-            elif not_before and entry.end_dt <= not_before:
-                continue
-            elif not_after and entry.start_dt >= not_after:
-                continue
+            if entry.all_day:
+                start, end = before_date, after_date
             else:
-                selected.append(entry)
+                start, end = not_before, not_after
+            recurring = entry.recurrence(start, end)
+            for recur in recurring:
+                if not recur.start_dt or not recur.end_dt:
+                    continue
+                elif recur.end_dt <= not_before:
+                    continue
+                elif recur.start_dt >= not_after:
+                    continue
+                else:
+                    selected.append(recur)
         return sorted(selected)
 
     def add_entry(self, entry: Entry):

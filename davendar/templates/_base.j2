@@ -118,8 +118,10 @@
       }
       ul.graph li {
         position: absolute;
-        overflow: hidden;
         text-overflow: ellipsis;
+      }
+      ul.graph:not(.multiline) li {
+        overflow: hidden;
       }
       ul.graph li span {
         white-space: nowrap;

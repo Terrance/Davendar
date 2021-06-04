@@ -22,7 +22,7 @@
       </li>
     {% endfor %}
   </ul>
-  <ul class="graph">
+  <ul class="graph multiline">
     {% for entry in entries if not entry.all_day %}
       {% set start, end = entry.times(selected.date()) %}
       {% set start_pc = start | day_percent | default(0, true) %}
