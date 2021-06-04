@@ -406,6 +406,12 @@ class Calendar:
                 self.colour = meta.get("ICAL:calendar-color")
                 LOG.debug("Identified calendar %r as %r", self.dirname, self.label)
 
+    def __getitem__(self, key: str):
+        try:
+            return self._entries_by_uid[key]
+        except KeyError:
+            return self._entries_by_filename[key]
+
     @repr_factory
     def __repr__(self):
         return [repr(self.dirname)]
@@ -497,6 +503,16 @@ class Collection:
                     else:
                         LOG.debug("Removing old event: %s/%s", dirname, path.name)
                         calendar.unload_entry(name)
+
+    def __getitem__(self, key: str):
+        try:
+            return self._calendars[key]
+        except KeyError:
+            matches = [cal for cal in self._calendars.values() if key == cal.label]
+            if len(matches) == 1:
+                return matches[0]
+            else:
+                raise
 
     @repr_factory
     def __repr__(self):
