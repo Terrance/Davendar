@@ -1,7 +1,7 @@
 from abc import ABC
 from asyncio.events import get_event_loop
 from collections import defaultdict
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from enum import IntEnum
 import json
 import logging
@@ -108,6 +108,7 @@ class Entry(ABC):
             self.reload()
         else:
             self._component = vCalendar()
+            self._component["PRODID"] = __package__
         self._virtual = virtual
 
     @property
@@ -137,10 +138,13 @@ class Entry(ABC):
         return self._calendar.path / self._filename if self._calendar else None
 
     uid = Property[str]("UID")
+    product = MutableProperty[str]("PRODID")
     summary = MutableProperty[str]("SUMMARY")
     created = MutableProperty[datetime]("CREATED")
+    updated = MutableProperty[datetime]("DTSTAMP")
     start = MutableProperty[DateMaybeTime]("DTSTART")
     end: MutableProperty[DateMaybeTime]
+    location = MutableProperty[str]("LOCATION")
 
     @property
     def start_dt(self):
@@ -226,6 +230,9 @@ class Entry(ABC):
             raise ValueError("Entry is virtual")
         if not self.path:
             raise ValueError("Must assign event to a calendar before saving")
+        if not self.created:
+            self.created = datetime.utcnow().astimezone(timezone.utc)
+        self.updated = datetime.utcnow().astimezone(timezone.utc)
         with open(self.path, "wb") as raw:
             raw.write(self._component.to_ical())
 
