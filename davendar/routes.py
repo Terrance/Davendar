@@ -2,14 +2,14 @@ from calendar import Calendar
 from datetime import date, timedelta
 from functools import wraps
 import logging
-from typing import Any, Awaitable, Callable, Mapping
+from typing import Any, Awaitable, Callable, cast, Mapping
 
 from aiohttp import web
 import aiohttp_jinja2
 from isoweek import Week
 
-from .collection import as_datetime, Collection, Entry
-from .utils import dynamic_globals
+from .collection import as_datetime, Collection, Entry, Event
+from .utils import dynamic_globals, text_parse
 
 
 LOG = logging.getLogger(__name__)
@@ -23,13 +23,26 @@ router = web.RouteTableDef()
 def ui_route(path: str):
     def outer(fn: Callable[[web.Request, Collection], Awaitable[Mapping[str, Any]]]):
         @wraps(fn)
-        async def inner(request: web.Request):
+        async def inner(request: web.Request) -> Mapping[str, Any]:
             coll = request.app["collection"]
             ctx = dynamic_globals()
+            ctx["request"] = request
             ctx.update(await fn(request, coll))
             return ctx
         templated = aiohttp_jinja2.template("{}.j2".format(fn.__name__))(inner)
         return router.get(path, name=fn.__name__)(templated)
+    return outer
+
+
+def form_route(path: str):
+    def outer(fn: Callable[[web.Request, Mapping[str, str], Collection], Awaitable[str]]):
+        @wraps(fn)
+        async def inner(request: web.Request) -> web.StreamResponse:
+            form = cast(Mapping[str, str], await request.post())
+            coll = request.app["collection"]
+            redirect = await fn(request, form, coll)
+            raise web.HTTPFound(redirect)
+        return router.post(path, name=fn.__name__)(inner)
     return outer
 
 
@@ -38,6 +51,46 @@ async def redirect(request: web.Request):
     today = date.today()
     url = request.app.router["month"].url_for(year=str(today.year), month=str(today.month))
     return web.HTTPTemporaryRedirect(url)
+
+
+@form_route(r"/create")
+async def create(request: web.Request, form: Mapping[str, str], coll: Collection):
+    words = form["text"].split()
+    name = None
+    for word in words:
+        if word.startswith("@"):
+            name = word[1:].lower()
+            words.remove(word)
+            break
+    for cal in coll.calendars:
+        if not name or name in cal.label.lower():
+            break
+    else:
+        raise web.HTTPBadRequest
+    try:
+        title, start, end, location = text_parse(words)
+    except ValueError:
+        LOG.debug("Failed to parse %r", form["text"], exc_info=True)
+        raise web.HTTPBadRequest
+    event = Event(cal)
+    event.summary = title
+    event.start = start
+    event.end = end
+    event.location = location
+    LOG.info("Adding new event: %r", event)
+    event.save()
+    try:
+        route = request.app.router[form["route"]]
+    except KeyError:
+        route = None
+    target = start or end or date.today()
+    if route.name == "day":
+        return route.url_for(year=str(target.year), month=str(target.month), date=str(target.day))
+    elif route.name == "week":
+        week = Week.withdate(target)
+        return route.url_for(year=str(week.year), week=str(week.week))
+    else:
+        return request.app.router["month"].url_for(year=str(target.year), month=str(target.month))
 
 
 @ui_route(r"/{year:\d{4}}/{month:\d{1,2}}")

@@ -19,6 +19,7 @@
         right: 0;
         height: 1rem;
         padding: 0.25rem;
+        display: flex;
         border-bottom: 1px solid #aaa;
       }
       .nav ul {
@@ -28,14 +29,21 @@
         padding-left: 0;
         list-style-type: none;
       }
+      .nav form {
+        flex: 1;
+        margin: 0 0.5rem;
+      }
+      .nav form input {
+        width: 100%;
+        padding: 0;
+        text-align: center;
+        border: 0;
+      }
       .nav li {
         display: inline;
       }
       .nav a {
         text-decoration: none;
-      }
-      .nav .right {
-        float: right;
       }
       .content {
         position: absolute;
@@ -149,7 +157,11 @@
       <ul>
         {% block nav %}{% endblock %}
       </ul>
-      <ul class="right">
+      <form method="POST" action="{{ url("create") }}">
+        <input type="text" name="text" placeholder="Add a new event...">
+        <input type="hidden" name="route" value="{{ request.match_info.route.name }}">
+      </form>
+      <ul>
         <li><a href="{{ url("month", year=now.year, month=now.month) }}">Month</a></li>
         <li><a href="{{ url("week", year=now_week.year, week=now_week.week) }}">Week</a></li>
         <li><a href="{{ url("day", year=now.year, month=now.month, day=now.day) }}">Day</a></li>

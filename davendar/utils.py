@@ -1,7 +1,8 @@
 from datetime import date, datetime, time
 import os
-from typing import Any, Callable, Dict, Iterable, Optional, TypeVar, Union, overload
+from typing import Any, Callable, Dict, Iterable, List, Optional, overload, TypeVar, Union
 
+from dateparser import parse
 from dateutil.relativedelta import relativedelta
 from isoweek import Week
 # Because recurring_ical_events expects pytz timezones:
@@ -75,6 +76,80 @@ def as_time(value: Optional[DateMaybeTime]) -> Optional[time]:
         return tzify(datetime(value.year, value.month, value.day)).timetz()
     else:
         return value
+
+
+_PARSE_KEYWORDS = {
+    "start": "start",
+    "at": ("start", "location"),
+    "from": "start",
+    "end": "end",
+    "to": "end",
+    "until": "end",
+    "for": "delta",
+    "in": "location",
+}
+
+
+def text_parse(words: List[str]):
+    """
+    Parse a written string describing details of an event.  Start and end timestamps (or a start
+    and duration) and locations can be resolved.  Use a backslash to avoid parsing a keyword.
+
+        >>> text_parse(r"Theme park from tomorrow all day until Friday at Disneyland Paris".split())
+        ("Theme park", date(2021, 6, 2), date(2021, 6, 4), "Disneyland Paris")
+    """
+    grouped = {}
+    for key in ("title", "start", "end", "delta", "location"):
+        grouped[key] = []
+    all_day = False
+    current = "title"
+    skip = 0
+    for word, after in zip(words, words[1:] + [""]):
+        if skip:
+            skip -= 1
+            continue
+        elif word.startswith("\\"):
+            word = word[1:]
+            grouped[current].append(word)
+            continue
+        elif word.lower() == "all" and after.lower() == "day":
+            all_day = True
+            skip = 1
+            continue
+        group = _PARSE_KEYWORDS.get(word.lower())
+        if isinstance(group, tuple):
+            for option in group:
+                if not grouped[option]:
+                    group = option
+                    break
+            else:
+                group = None
+        if group:
+            current = group
+        else:
+            grouped[current].append(word)
+    values = {key: " ".join(words) or None for key, words in grouped.items()}
+    title = values["title"]
+    location = values["location"]
+    start = end = None
+    if values["start"]:
+        start = parse(values["start"])
+        if not start:
+            raise ValueError(values["start"])
+        start = as_date(start) if all_day else as_datetime(start)
+    if values["end"]:
+        end = parse(values["end"])
+        if not end:
+            raise ValueError(values["end"])
+    elif values["delta"]:
+        offset = parse(values["delta"])
+        if not offset:
+            raise ValueError(values["delta"])
+        delta = datetime.now() - offset
+        end = start + delta
+    if end:
+        end = as_date(end) if all_day else as_datetime(end)
+    return (title, start, end, location)
 
 
 def repr_factory(parts: Callable[[T], Iterable[Optional[str]]]) -> Callable[[T], str]:
