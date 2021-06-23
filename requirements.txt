@@ -2,4 +2,5 @@ aiohttp
 asyncinotify
 icalendar
 isoweek
+pytz_deprecation_shim
 recurring-ical-events

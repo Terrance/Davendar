@@ -181,7 +181,7 @@ class Entry(ABC):
             start = self.start_d
         if self.end_d:
             end = self.end_d
-            midnight = datetime(end.year, end.month, end.day).astimezone().timetz()
+            midnight = as_datetime(date(end.year, end.month, end.day)).timetz()
             if self.end_t == midnight:
                 end -= timedelta(days=1)
         if start and end:
