@@ -55,11 +55,11 @@ class Entry(ABC):
     class MutableProperty(_DefaultProperty[T, None]):
         def __init__(self, field: str):
             super().__init__(field, None)
-        def __set__(self, instance: "Entry", owner: Type["Entry"], value: Optional[T]):
-            self.__del__(instance, owner)
+        def __set__(self, instance: "Entry", value: Optional[T]):
+            self.__del__(instance)
             if value:
                 instance._core.add(self._field, value, encode=True)
-        def __del__(self, instance: "Entry", _: Type["Entry"]):
+        def __del__(self, instance: "Entry"):
             try:
                 del instance._core[self._field]
             except KeyError:
@@ -235,7 +235,7 @@ class Entry(ABC):
 
     @repr_factory
     def __repr__(self):
-        return [repr(self.summary),
+        return [repr(self.uid), repr(self.summary) if self.summary else None,
                 self.start.strftime("%Y-%m-%d %H:%M") if self.start else None,
                 self.end.strftime("%Y-%m-%d %H:%M") if self.end else None]
 
@@ -414,7 +414,7 @@ class Calendar:
 
     @repr_factory
     def __repr__(self):
-        return [repr(self.dirname)]
+        return [repr(self.dirname), repr(self.label) if self.label else None]
 
 
 class Collection:
