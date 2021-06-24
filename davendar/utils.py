@@ -14,8 +14,9 @@ DateMaybeTime = Union[date, datetime]
 Func = Callable[..., Any]
 
 
+TZ_NAME = os.getenv("TZ", "UTC")
 try:
-    TZ = timezone(os.getenv("TZ", "UTC"))
+    TZ = timezone(TZ_NAME)
 except KeyError:
     raise RuntimeError("TZ environment variable not set to a valid timezone")
 

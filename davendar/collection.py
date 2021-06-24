@@ -10,11 +10,11 @@ from typing import cast, Dict, Generic, Iterable, List, Optional, Type, TypeVar,
 from uuid import uuid4
 
 from asyncinotify import Inotify, Mask, Watch
-from icalendar import Calendar as vCalendar, Event as vEvent, Todo as vTodo, vText
+from icalendar import Calendar as vCalendar, Event as vEvent, Todo as vTodo, vDDDTypes, vText
 from icalendar.cal import Component
 from recurring_ical_events import of as recurrences_of
 
-from .utils import as_date, as_datetime, as_time, DateMaybeTime, repr_factory
+from .utils import as_date, as_datetime, as_time, DateMaybeTime, repr_factory, TZ_NAME
 
 
 T = TypeVar("T")
@@ -57,7 +57,12 @@ class Entry(ABC):
             super().__init__(field, None)
         def __set__(self, instance: "Entry", value: Optional[T]):
             self.__del__(instance)
-            if value:
+            if isinstance(value, datetime):
+                ddd = vDDDTypes(as_datetime(value))
+                ddd.params["VALUE"] = "DATE-TIME"
+                ddd.params["TZID"] = TZ_NAME
+                instance._core.add(self._field, ddd)
+            elif value:
                 instance._core.add(self._field, value, encode=True)
         def __del__(self, instance: "Entry"):
             try:
