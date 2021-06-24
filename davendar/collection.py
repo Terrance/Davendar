@@ -236,9 +236,13 @@ class Entry(ABC):
         with open(self.path, "wb") as raw:
             raw.write(self._component.to_ical())
 
+    @property
+    def _lt_tuple(self):
+        default = as_datetime(datetime.now())
+        return (self.start_dt or default, self.end_dt or default, self.summary)
+
     def __lt__(self, other: "Entry"):
-        default = datetime.now().astimezone()
-        return (self.start_dt or default) < (other.start_dt or default)
+        return self._lt_tuple < other._lt_tuple
 
     @repr_factory
     def __repr__(self):
