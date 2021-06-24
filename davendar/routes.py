@@ -53,6 +53,13 @@ async def redirect(request: web.Request):
     return web.HTTPTemporaryRedirect(url)
 
 
+@router.get(r"/icon", name="icon")
+async def icon(request: web.Request):
+    tmpl = aiohttp_jinja2.get_env(request.app).get_template("icon.j2")
+    image = tmpl.render(dynamic_globals())
+    return web.Response(text=image, content_type="image/svg+xml")
+
+
 @form_route(r"/create")
 async def create(request: web.Request, form: Mapping[str, str], coll: Collection):
     words = form["text"].split()
