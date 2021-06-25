@@ -1,7 +1,10 @@
 from datetime import date, datetime, time
 import os
 from typing import Any, Callable, Dict, Iterable, List, Optional, overload, TypeVar, Union
+from urllib.parse import quote
 
+from aiohttp import web
+import aiohttp_jinja2
 from dateparser import parse
 from dateutil.relativedelta import relativedelta
 from isoweek import Week
@@ -21,17 +24,24 @@ except KeyError:
     raise RuntimeError("TZ environment variable not set to a valid timezone")
 
 
-FILTERS: Dict[str, Func] = {}
+FILTERS: Dict[str, Func] = {
+    "urlencode": quote,
+}
 
 GLOBALS: Dict[str, Any] = {
     "months": [date(2000, month, 1).strftime("%B") for month in range(1, 13)],
 }
 
 
-def dynamic_globals():
+def dynamic_globals(app: web.Application):
+    now = datetime.now()
+    tmpl = aiohttp_jinja2.get_env(app).get_template("icon.j2")
+    icon = tmpl.render({"now": now})
+    icon_line = "".join(line.strip() for line in icon.splitlines())
     return {
-        "now": datetime.now(),
+        "now": now,
         "now_week": Week.thisweek(),
+        "favicon": icon_line,
     }
 
 

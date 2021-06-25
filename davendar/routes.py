@@ -25,7 +25,7 @@ def ui_route(path: str):
         @wraps(fn)
         async def inner(request: web.Request) -> Mapping[str, Any]:
             coll = request.app["collection"]
-            ctx = dynamic_globals()
+            ctx = dynamic_globals(request.app)
             ctx["request"] = request
             ctx.update(await fn(request, coll))
             return ctx
@@ -51,13 +51,6 @@ async def redirect(request: web.Request):
     today = date.today()
     url = request.app.router["month"].url_for(year=str(today.year), month=str(today.month))
     return web.HTTPTemporaryRedirect(url)
-
-
-@router.get(r"/icon", name="icon")
-async def icon(request: web.Request):
-    tmpl = aiohttp_jinja2.get_env(request.app).get_template("icon.j2")
-    image = tmpl.render(dynamic_globals())
-    return web.Response(text=image, content_type="image/svg+xml")
 
 
 @form_route(r"/create")

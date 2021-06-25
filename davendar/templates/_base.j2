@@ -2,7 +2,7 @@
 <html>
   <head>
     <title>{% block title %}{% endblock %}{% if self.title() %} &mdash; {% endif %}Davendar</title>
-    <link rel="icon" type="image/svg+xml" href="{{ url("icon") }}">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,{{ favicon | urlencode }}">
     <style>
       html {
         height: 100%;
