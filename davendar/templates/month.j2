@@ -24,6 +24,9 @@
                 {{ icon(entry) }}
                 {{ times(entry, date) }}
                 {{ entry.summary }}
+                {% if entry.location %}
+                  <a href="https://www.google.com/maps/search/{{ entry.location.replace("\n", " ") | urlencode }}/">&#9656;</a>
+                {% endif %}
               </li>
             {% endfor %}
           </ul>
