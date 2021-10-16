@@ -2,14 +2,19 @@ from calendar import Calendar
 from datetime import date, timedelta
 from functools import wraps
 import logging
-from typing import Any, Awaitable, Callable, cast, Mapping
+from typing import Any, Awaitable, Callable, cast, Mapping, Union
 
 from aiohttp import web
 import aiohttp_jinja2
 from isoweek import Week
+from yarl import URL
 
 from .collection import as_datetime, Collection, Entry, Event
 from .utils import dynamic_globals, text_parse
+
+
+FormView = Awaitable[Union[str, URL]]
+UIView = Awaitable[Mapping[str, Any]]
 
 
 LOG = logging.getLogger(__name__)
@@ -21,7 +26,7 @@ router = web.RouteTableDef()
 
 
 def ui_route(path: str):
-    def outer(fn: Callable[[web.Request, Collection], Awaitable[Mapping[str, Any]]]):
+    def outer(fn: Callable[[web.Request, Collection], UIView]):
         @wraps(fn)
         async def inner(request: web.Request) -> Mapping[str, Any]:
             coll = request.app["collection"]
@@ -35,7 +40,7 @@ def ui_route(path: str):
 
 
 def form_route(path: str):
-    def outer(fn: Callable[[web.Request, Mapping[str, str], Collection], Awaitable[str]]):
+    def outer(fn: Callable[[web.Request, Mapping[str, str], Collection], FormView]):
         @wraps(fn)
         async def inner(request: web.Request) -> web.StreamResponse:
             form = cast(Mapping[str, str], await request.post())
@@ -100,6 +105,15 @@ async def entry(request: web.Request, coll: Collection):
     return {
         "entry": entry,
     }
+
+
+@form_route(r"/entry/{cal}/{entry}/delete")
+async def entry_delete(request: web.Request, form: Mapping[str, str], coll: Collection):
+    cal = coll[request.match_info["cal"]]
+    entry = cal[request.match_info["entry"]]
+    entry.delete()
+    today = date.today()
+    return request.app.router["month"].url_for(year=str(today.year), month=str(today.month))
 
 
 @ui_route(r"/{year:\d{4}}/{month:\d{1,2}}")

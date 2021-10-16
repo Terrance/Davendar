@@ -242,6 +242,12 @@ class Entry(ABC):
         with open(self.path, "wb") as raw:
             raw.write(self._component.to_ical())
 
+    def delete(self):
+        if self._virtual:
+            raise ValueError("Entry is virtual")
+        if self.path:
+            self.path.unlink()
+
     @property
     def _lt_tuple(self):
         default = as_datetime(datetime.now())

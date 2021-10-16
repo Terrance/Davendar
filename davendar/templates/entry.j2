@@ -19,4 +19,7 @@
       <li>Location: {{ entry.location }}</li>
     {% endif %}
   </ul>
+  <form method="post" action="{{ url("entry_delete", cal=entry.calendar.dirname, entry=entry.uid) }}">
+    <input type="submit" value="Delete">
+  </form>
 {% endblock %}
