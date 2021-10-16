@@ -396,16 +396,20 @@ class Calendar:
         del self._entries_by_uid[entry.uid]
 
     def load_entry(self, filename: str):
-        path = self.path / filename
         try:
             event = Entry.load(self, filename)
         except Entry.Invalid as ex:
+            path = self.path / filename
             LOG.warning("Skipping non-entry file: %s (%s)", path, ex.args[0])
         else:
             self.add_entry(event)
 
     def unload_entry(self, filename: str):
-        self.drop_entry(self._entries_by_filename[filename])
+        try:
+            self.drop_entry(self._entries_by_filename[filename])
+        except KeyError as ex:
+            path = self.path / filename
+            LOG.warning("Skipping non-entry file: %s (%s)", path, ex.args[0])
 
     def scan_entries(self):
         count = 0
@@ -495,39 +499,42 @@ class Collection:
                     self.add_calendar(calendar)
             LOG.info("Listening for filesystem changes")
             async for change in inotify:
-                if not change.name:
-                    continue
-                name = str(change.name)
-                path = change.watch.path / change.name
-                if change.watch is top:
-                    # Change relates to the group itself.
-                    watched = path in watches
-                    if not watched and path.is_dir():
-                        # Calendar was created or moved in to the group.
-                        LOG.debug("Adding new calendar: %s", path.name)
-                        watches[path] = inotify.add_watch(path, self.MASK_CHANGE)
-                        calendar = await self.open_calendar(name)
-                        self.add_calendar(calendar)
-                    elif watched and not path.is_dir():
-                        # Calendar was deleted or moved out of the root.
-                        LOG.debug("Removing old calendar: %s", path.name)
-                        # Can't remove the watch if the watched dir was deleted.
-                        if not change.mask & Mask.DELETE:
-                            inotify.rm_watch(watches.pop(path))
-                        calendar = self._calendars[name]
-                        self.drop_calendar(calendar)
-                elif path.is_file():
-                    # Change relates to a new or updated calendar item.
-                    dirname = change.watch.path.name
-                    calendar = self._calendars[dirname]
-                    LOG.debug("Adding new event: %s/%s", dirname, path.name)
-                    calendar.load_entry(name)
-                elif change.mask & Mask.DELETE:
-                    # Change relates to a deleted calendar item.
-                    dirname = change.watch.path.name
-                    calendar = self._calendars[dirname]
-                    LOG.debug("Removing old event: %s/%s", dirname, path.name)
-                    calendar.unload_entry(name)
+                try:
+                    if not change.name:
+                        continue
+                    name = str(change.name)
+                    path = change.watch.path / change.name
+                    if change.watch is top:
+                        # Change relates to the group itself.
+                        watched = path in watches
+                        if not watched and path.is_dir():
+                            # Calendar was created or moved in to the group.
+                            LOG.debug("Adding new calendar: %s", path.name)
+                            watches[path] = inotify.add_watch(path, self.MASK_CHANGE)
+                            calendar = await self.open_calendar(name)
+                            self.add_calendar(calendar)
+                        elif watched and not path.is_dir():
+                            # Calendar was deleted or moved out of the root.
+                            LOG.debug("Removing old calendar: %s", path.name)
+                            # Can't remove the watch if the watched dir was deleted.
+                            if not change.mask & Mask.DELETE:
+                                inotify.rm_watch(watches.pop(path))
+                            calendar = self._calendars[name]
+                            self.drop_calendar(calendar)
+                    elif path.is_file():
+                        # Change relates to a new or updated calendar item.
+                        dirname = change.watch.path.name
+                        calendar = self._calendars[dirname]
+                        LOG.debug("Adding new event: %s/%s", dirname, path.name)
+                        calendar.load_entry(name)
+                    elif change.mask & Mask.DELETE:
+                        # Change relates to a deleted calendar item.
+                        dirname = change.watch.path.name
+                        calendar = self._calendars[dirname]
+                        LOG.debug("Removing old event: %s/%s", dirname, path.name)
+                        calendar.unload_entry(name)
+                except Exception:
+                    LOG.warning("Exception handling change: %r", change, exc_info=True)
 
     def __getitem__(self, key: str):
         try:
