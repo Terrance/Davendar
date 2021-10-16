@@ -23,7 +23,7 @@
               <li>
                 {{ icon(entry) }}
                 {{ times(entry, date) }}
-                {{ entry.summary }}
+                <a href="{{ url("entry", cal=entry.calendar.dirname, entry=entry.uid) }}">{{ entry.summary }}</a>
                 {% if entry.location %}
                   <a href="https://www.google.com/maps/search/{{ entry.location.replace("\n", " ") | urlencode }}/">&#9656;</a>
                 {% endif %}

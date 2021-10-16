@@ -93,6 +93,15 @@ async def create(request: web.Request, form: Mapping[str, str], coll: Collection
         return request.app.router["month"].url_for(year=str(target.year), month=str(target.month))
 
 
+@ui_route(r"/entry/{cal}/{entry}")
+async def entry(request: web.Request, coll: Collection):
+    cal = coll[request.match_info["cal"]]
+    entry = cal[request.match_info["entry"]]
+    return {
+        "entry": entry,
+    }
+
+
 @ui_route(r"/{year:\d{4}}/{month:\d{1,2}}")
 async def month(request: web.Request, coll: Collection):
     year = int(request.match_info["year"])

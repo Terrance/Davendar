@@ -1,0 +1,22 @@
+{% extends "_base.j2" %}
+{% from "_macros.j2" import icon, times %}
+
+{% block title %}{{ entry.summary }}{% endblock %}
+
+{% block content %}
+  <h2>{{ entry.summary }}</h2>
+  <ul>
+    {% if entry.start_dt %}
+      <li>Start: {{ entry.start_dt }}</li>
+    {% endif %}
+    {% if entry.end_dt %}
+      <li>End: {{ entry.end_dt }}</li>
+    {% endif %}
+    {% if entry.description %}
+      <li>Description: {{ entry.description }}</li>
+    {% endif %}
+    {% if entry.location %}
+      <li>Location: {{ entry.location }}</li>
+    {% endif %}
+  </ul>
+{% endblock %}

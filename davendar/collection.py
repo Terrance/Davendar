@@ -149,6 +149,7 @@ class Entry(ABC):
     updated = MutableProperty[datetime]("DTSTAMP")
     start = MutableProperty[DateMaybeTime]("DTSTART")
     end: MutableProperty[DateMaybeTime]
+    description = MutableProperty[str]("DESCRIPTION")
     location = MutableProperty[str]("LOCATION")
 
     @property
