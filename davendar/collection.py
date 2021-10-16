@@ -517,15 +517,17 @@ class Collection:
                         calendar = self._calendars[name]
                         self.drop_calendar(calendar)
                 elif path.is_file():
-                    # Change relates to a calendar item.
+                    # Change relates to a new or updated calendar item.
                     dirname = change.watch.path.name
                     calendar = self._calendars[dirname]
-                    if path.exists():
-                        LOG.debug("Adding new event: %s/%s", dirname, path.name)
-                        calendar.load_entry(name)
-                    else:
-                        LOG.debug("Removing old event: %s/%s", dirname, path.name)
-                        calendar.unload_entry(name)
+                    LOG.debug("Adding new event: %s/%s", dirname, path.name)
+                    calendar.load_entry(name)
+                elif change.mask & Mask.DELETE:
+                    # Change relates to a deleted calendar item.
+                    dirname = change.watch.path.name
+                    calendar = self._calendars[dirname]
+                    LOG.debug("Removing old event: %s/%s", dirname, path.name)
+                    calendar.unload_entry(name)
 
     def __getitem__(self, key: str):
         try:
