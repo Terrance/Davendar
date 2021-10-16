@@ -84,11 +84,11 @@ async def create(request: web.Request, form: Mapping[str, str], coll: Collection
     event.location = location
     LOG.info("Adding new event: %r", event)
     event.save()
+    target = start or end or date.today()
     try:
         route = request.app.router[form["route"]]
     except KeyError:
-        route = None
-    target = start or end or date.today()
+        route = request.app.router["month"]
     if route.name == "day":
         return route.url_for(year=str(target.year), month=str(target.month), date=str(target.day))
     elif route.name == "week":
