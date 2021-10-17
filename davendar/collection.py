@@ -10,8 +10,8 @@ from typing import cast, Dict, Generic, Iterable, List, Optional, Type, TypeVar,
 from uuid import uuid4
 
 from asyncinotify import Inotify, Mask, Watch
-from icalendar import Calendar as vCalendar, Event as vEvent, Todo as vTodo, vDDDTypes, vText
-from icalendar.cal import Component
+from icalendar.cal import Component, Calendar as vCalendar, Event as vEvent, Todo as vTodo
+from icalendar.prop import vDDDTypes, vText
 
 from .utils import as_date, as_datetime, as_time, DateMaybeTime, repr_factory, TZ_NAME
 from .vendor.recurring_ical_events import of as recurrences_of
@@ -130,7 +130,7 @@ class Entry(ABC):
 
     @calendar.setter
     def calendar(self, calendar: "Calendar"):
-        if self._calendar and self.path.exists():
+        if self._calendar and self.path and self.path.exists():
             self.path.rename(calendar.path / self._filename)
         self._calendar = calendar
 
@@ -482,7 +482,7 @@ class Collection:
     def drop_calendar(self, calendar: Calendar):
         del self._calendars[calendar.dirname]
 
-    def slice(self, not_before: Optional[datetime] = None, not_after: Optional[datetime] = None):
+    def slice(self, not_before: datetime, not_after: datetime):
         selected: List[Entry] = []
         for calendar in self.calendars:
             selected += calendar.slice(not_before, not_after)
@@ -505,7 +505,7 @@ class Collection:
             LOG.info("Listening for filesystem changes")
             async for change in inotify:
                 try:
-                    if not change.name:
+                    if not change.name or not change.watch:
                         continue
                     name = str(change.name)
                     path = change.watch.path / change.name

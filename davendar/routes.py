@@ -68,7 +68,7 @@ async def create(request: web.Request, form: Mapping[str, str], coll: Collection
             words.remove(word)
             break
     for cal in coll.calendars:
-        if not name or name in cal.label.lower():
+        if not name or (cal.label and name in cal.label.lower()):
             break
     else:
         raise web.HTTPBadRequest
