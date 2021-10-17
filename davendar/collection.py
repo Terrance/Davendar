@@ -12,9 +12,9 @@ from uuid import uuid4
 from asyncinotify import Inotify, Mask, Watch
 from icalendar import Calendar as vCalendar, Event as vEvent, Todo as vTodo, vDDDTypes, vText
 from icalendar.cal import Component
-from recurring_ical_events import of as recurrences_of
 
 from .utils import as_date, as_datetime, as_time, DateMaybeTime, repr_factory, TZ_NAME
+from .vendor.recurring_ical_events import of as recurrences_of
 
 
 T = TypeVar("T")
