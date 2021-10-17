@@ -5,7 +5,7 @@ from urllib.parse import quote
 
 from aiohttp import web
 import aiohttp_jinja2
-from dateparser import parse
+from dateparser.date import DateDataParser
 from dateutil.relativedelta import relativedelta
 from isoweek import Week
 # Because recurring_ical_events expects pytz timezones:
@@ -22,6 +22,9 @@ try:
     TZ = timezone(TZ_NAME)
 except KeyError:
     raise RuntimeError("TZ environment variable not set to a valid timezone")
+
+
+DATE_PARSER = DateDataParser(settings={"RETURN_TIME_AS_PERIOD": True})
 
 
 FILTERS: Dict[str, Func] = {
@@ -47,6 +50,17 @@ def dynamic_globals(app: web.Application):
 
 def tzify(value: datetime):
     return value.astimezone(TZ)
+
+
+def parse_date(text: str) -> Optional[DateMaybeTime]:
+    parsed = DATE_PARSER.get_date_data(text)
+    value = parsed.date_obj
+    if not value:
+        return None
+    elif parsed.period == "time":
+        return value
+    else:
+        return as_date(value)
 
 
 @overload
@@ -112,20 +126,11 @@ def text_parse(words: List[str]):
     grouped = {}
     for key in ("title", "start", "end", "delta", "location"):
         grouped[key] = []
-    all_day = False
     current = "title"
-    skip = 0
-    for word, after in zip(words, words[1:] + [""]):
-        if skip:
-            skip -= 1
-            continue
-        elif word.startswith("\\"):
+    for word in words:
+        if word.startswith("\\"):
             word = word[1:]
             grouped[current].append(word)
-            continue
-        elif word.lower() == "all" and after.lower() == "day":
-            all_day = True
-            skip = 1
             continue
         group = _PARSE_KEYWORDS.get(word.lower())
         if isinstance(group, tuple):
@@ -144,22 +149,22 @@ def text_parse(words: List[str]):
     location = values["location"]
     start = end = None
     if values["start"]:
-        start = parse(values["start"])
-        if not start:
-            raise ValueError(values["start"])
-        start = as_date(start) if all_day else as_datetime(start)
+        start = parse_date(values["start"])
+    if not start:
+        raise ValueError(values["start"])
     if values["end"]:
-        end = parse(values["end"])
-        if not end:
-            raise ValueError(values["end"])
+        end = parse_date(values["end"])
     elif values["delta"]:
-        offset = parse(values["delta"])
+        offset = parse_date(values["delta"])
         if not offset:
             raise ValueError(values["delta"])
-        delta = datetime.now() - offset
+        elif isinstance(offset, datetime):
+            delta = datetime.now() - offset
+        else:
+            delta = date.today() - offset
         end = start + delta
-    if end:
-        end = as_date(end) if all_day else as_datetime(end)
+    if not end:
+        raise ValueError(values["end"])
     return (title, start, end, location)
 
 
