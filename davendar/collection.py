@@ -213,9 +213,14 @@ class Entry(ABC):
         return (start, end)
 
     def recurrence(self, start: date, end: date):
-        components = recurrences_of(self._component).between(start, end)
-        return [self.__class__(calendar=self.calendar, component=component, virtual=True)
-                for component in components]
+        try:
+            components = recurrences_of(self._component).between(start, end)
+        except Exception:
+            LOG.warning("Failed to generate recurrences of %r", self, exc_info=True)
+            return []
+        else:
+            return [self.__class__(calendar=self.calendar, component=component, virtual=True)
+                    for component in components]
 
     def reload(self):
         if not (self.path and self.path.exists()):
