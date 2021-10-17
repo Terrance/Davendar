@@ -3,4 +3,3 @@ asyncinotify
 dateparser
 icalendar
 isoweek
-pytz_deprecation_shim

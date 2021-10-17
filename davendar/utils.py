@@ -3,13 +3,16 @@ import os
 from typing import Any, Callable, Dict, Iterable, List, Optional, overload, TypeVar, Union
 from urllib.parse import quote
 
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    from backports.zoneinfo import ZoneInfo
+
 from aiohttp import web
 import aiohttp_jinja2
 from dateparser.date import DateDataParser
 from dateutil.relativedelta import relativedelta
 from isoweek import Week
-# Because recurring_ical_events expects pytz timezones:
-from pytz_deprecation_shim import timezone
 
 
 T = TypeVar("T")
@@ -19,7 +22,7 @@ Func = Callable[..., Any]
 
 TZ_NAME = os.getenv("TZ", "UTC")
 try:
-    TZ = timezone(TZ_NAME)
+    TZ = ZoneInfo(TZ_NAME)
 except KeyError:
     raise RuntimeError("TZ environment variable not set to a valid timezone")
 
