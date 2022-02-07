@@ -1,5 +1,7 @@
 aiohttp
+aiohttp_jinja2
 asyncinotify
 dateparser
 icalendar
 isoweek
+recurring_ical_events>=1.0.1b

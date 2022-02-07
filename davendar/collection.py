@@ -6,6 +6,7 @@ from enum import IntEnum
 import json
 import logging
 from pathlib import Path
+from recurring_ical_events import of as recurrences_of
 from typing import cast, Dict, Generic, Iterable, List, Optional, Type, TypeVar, Union
 from uuid import uuid4
 
@@ -14,7 +15,6 @@ from icalendar.cal import Component, Calendar as vCalendar, Event as vEvent, Tod
 from icalendar.prop import vDDDTypes, vText
 
 from .utils import as_date, as_datetime, as_time, DateMaybeTime, repr_factory, TZ_NAME
-from .vendor.recurring_ical_events import of as recurrences_of
 
 
 T = TypeVar("T")
